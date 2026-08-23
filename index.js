@@ -2,8 +2,10 @@ const puppeteer = require('puppeteer');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 (async () => {
-  console.log("🚀 Starting A2Z Automation Bot with Enhanced Screenshot Capture...");
+  console.log("🚀 Starting A2Z Automation Bot...");
 
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
@@ -31,23 +33,14 @@ const { JWT } = require('google-auth-library');
 
   const browser = await puppeteer.launch({
     headless: "new",
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--disable-gpu'
-    ]
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1366, height: 768 });
 
   try {
-    // 1. Login
-    console.log("🔑 Logging into A2Z Account...");
+    console.log("🔑 [LIVE LOG] Logging into A2Z Account...");
     await page.goto('https://a2ztraders.lk/index.php/Dash', { waitUntil: 'networkidle2' });
 
     await page.type('input[type="text"], input[name="email"]', process.env.A2Z_EMAIL);
@@ -57,7 +50,7 @@ const { JWT } = require('google-auth-library');
       page.click('button[type="submit"], input[type="submit"]'),
       page.waitForNavigation({ waitUntil: 'networkidle2' })
     ]);
-    console.log("✅ Logged in successfully!");
+    console.log("✅ [LIVE LOG] Logged in successfully!");
 
     for (let row of pendingRows) {
       const name = (row.get('Customer Name') || row.get('B') || '').trim();
@@ -71,13 +64,13 @@ const { JWT } = require('google-auth-library');
 
       if (!name || !phone) continue;
 
-      console.log(`⏳ Processing UI order for: ${name} | Product: ${prodId}`);
+      console.log(`⏳ [LIVE LOG] Navigating to Customer Form for: ${name}`);
 
       try {
         await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2' });
-        await page.waitForTimeout(2000);
+        await delay(1500);
 
-        // --- Fill Customer Details ---
+        console.log(`📝 [LIVE LOG] Filling Name: ${name} & Address: ${address}`);
         const textInputs = await page.$$('input[type="text"]');
         if (textInputs.length >= 1) await textInputs[0].type(name);
         if (textInputs.length >= 2) await textInputs[1].type(address);
@@ -85,6 +78,7 @@ const { JWT } = require('google-auth-library');
         const selects = await page.$$('select');
 
         if (selects.length >= 1 && city) {
+          console.log(`🌆 [LIVE LOG] Selecting City: ${city}`);
           await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
               if (opt.text.toLowerCase().trim().includes(val.toLowerCase())) {
@@ -97,6 +91,7 @@ const { JWT } = require('google-auth-library');
         }
 
         if (selects.length >= 2 && district) {
+          console.log(`📍 [LIVE LOG] Selecting District: ${district}`);
           await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
               if (opt.text.toLowerCase().trim().includes(val.toLowerCase())) {
@@ -123,17 +118,14 @@ const { JWT } = require('google-auth-library');
           }, selects[2]);
         }
 
-        // --- Product Search & Selection ---
         if (prodId) {
-          console.log(`🔍 Searching Product ID: ${prodId}`);
+          console.log(`📦 [LIVE LOG] Typing Product ID: ${prodId}`);
           const prodSearchInput = await page.$('input[placeholder*="Select a product"], .select2-search__field');
-          
           if (prodSearchInput) {
             await prodSearchInput.click();
-            await prodSearchInput.type(prodId, { delay: 100 });
-            await page.waitForTimeout(1500);
+            await prodSearchInput.type(prodId);
+            await delay(500);
             await page.keyboard.press('Enter');
-            await page.waitForTimeout(1000);
           } else if (selects.length >= 4) {
             await page.evaluate((sel, pId) => {
               for (let opt of sel.options) {
@@ -147,7 +139,6 @@ const { JWT } = require('google-auth-library');
           }
         }
 
-        // Set Price
         const saleAmountInput = await page.$('input[placeholder*="Sale Amount"]');
         if (saleAmountInput) {
           await saleAmountInput.click({ clickCount: 3 });
@@ -157,48 +148,47 @@ const { JWT } = require('google-auth-library');
           await textInputs[5].type(String(price));
         }
 
-        await page.waitForTimeout(1000);
+        await delay(500);
 
-        // Click "+ Add Product"
+        console.log("➕ [LIVE LOG] Clicking Add Product...");
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
           const addBtn = btns.find(b => b.textContent.includes('Add Product'));
           if (addBtn) addBtn.click();
         });
 
-        await page.waitForTimeout(2000);
+        await delay(1500);
 
-        // Click "Add Order" Final Submission
+        console.log("💾 [LIVE LOG] Submitting Final Order...");
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
           const submitBtn = btns.find(b => b.textContent.includes('Add Order'));
           if (submitBtn) submitBtn.click();
         });
 
-        await page.waitForTimeout(3000);
+        await delay(2000);
 
-        // --- Check for Error Popups ---
         const pageError = await page.evaluate(() => {
           const alert = document.querySelector('.alert, .toast, .swal-text, .error-msg, .invalid-feedback');
           return alert ? alert.innerText.trim() : null;
         });
 
         if (pageError) {
-          console.error(`⚠️ UI Error Alert detected: ${pageError}`);
-          await page.waitForTimeout(1000);
-          await page.screenshot({ path: 'error-screenshot.png', fullPage: true, captureBeyondViewport: true });
+          console.error(`⚠️ [LIVE LOG] UI Error detected: ${pageError}`);
+          await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
           row.set('Status', `Failed: ${pageError}`);
           await row.save();
         } else {
           row.set('Status', 'Order Placed Successfully');
           await row.save();
-          console.log(`✅ Order for ${name} completed successfully!`);
+          console.log(`✅ [LIVE LOG] Order for ${name} completed successfully!`);
         }
 
       } catch (orderError) {
-        console.error(`❌ Order Exception for ${name}:`, orderError.message);
-        await page.waitForTimeout(1000);
-        await page.screenshot({ path: 'error-screenshot.png', fullPage: true, captureBeyondViewport: true });
+        console.error(`❌ [LIVE LOG] Order Exception for ${name}:`, orderError.message);
+        try {
+          await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
+        } catch (e) {}
         row.set('Status', `Failed: ${orderError.message}`);
         await row.save();
       }
@@ -206,10 +196,11 @@ const { JWT } = require('google-auth-library');
 
   } catch (err) {
     console.error("❌ Fatal Error:", err.message);
-    await page.waitForTimeout(1000);
-    await page.screenshot({ path: 'error-screenshot.png', fullPage: true, captureBeyondViewport: true }).catch(() => {});
+    try {
+      await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
+    } catch (e) {}
   } finally {
     await browser.close();
-    console.log("🔒 Browser closed.");
+    console.log("🔒 [LIVE LOG] Browser closed.");
   }
 })();
