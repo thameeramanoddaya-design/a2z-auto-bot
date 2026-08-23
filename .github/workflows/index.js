@@ -1,18 +1,76 @@
 const puppeteer = require('puppeteer');
-const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 if (!fs.existsSync('./videos')) fs.mkdirSync('./videos');
 if (!fs.existsSync('./debug')) fs.mkdirSync('./debug');
+if (!fs.existsSync('./frames')) fs.mkdirSync('./frames');
 
-// Helper: save a screenshot + log the current URL, so we can SEE exactly
-// where the bot is / what state the page is in at every important step.
-// These screenshots land in ./debug and get uploaded as an artifact too,
-// so even if the video is blank you can open the PNGs and see what happened.
+// ---------------------------------------------------------------------
+// Custom screenshot-based recorder.
+// We stopped using `puppeteer-screen-recorder` because it uses a CDP
+// screencast stream internally, and that stream races with page
+// navigations and throws:
+//   "Protocol error (DOM.describeNode): Cannot find context with specified id"
+// This custom version just calls page.screenshot() on an interval (a
+// plain, one-shot CDP call -- no background stream), and stitches the
+// PNGs into an mp4 with ffmpeg when we're done. Much more stable.
+// ---------------------------------------------------------------------
+class SimpleRecorder {
+  constructor(page, { intervalMs = 400, dir = './frames' } = {}) {
+    this.page = page;
+    this.intervalMs = intervalMs;
+    this.dir = dir;
+    this.frameCount = 0;
+    this.running = false;
+  }
+
+  start() {
+    this.running = true;
+    this._loop();
+  }
+
+  async _loop() {
+    while (this.running) {
+      try {
+        const filename = path.join(this.dir, `frame_${String(this.frameCount).padStart(5, '0')}.png`);
+        await this.page.screenshot({ path: filename });
+        this.frameCount++;
+      } catch (e) {
+        // Page mid-navigation or briefly unavailable -- just skip this frame.
+      }
+      await delay(this.intervalMs);
+    }
+  }
+
+  async stop(outputPath) {
+    this.running = false;
+    await delay(this.intervalMs + 150); // let the in-flight loop iteration finish
+
+    if (this.frameCount === 0) {
+      console.log("⚠️ No frames were captured, skipping video encode.");
+      return;
+    }
+
+    const fps = Math.max(1, Math.round(1000 / this.intervalMs));
+    try {
+      execSync(
+        `ffmpeg -y -framerate ${fps} -i "${this.dir}/frame_%05d.png" -vf "scale=1366:768,format=yuv420p" "${outputPath}"`,
+        { stdio: 'inherit' }
+      );
+      console.log(`🎬 Video encoded from ${this.frameCount} frames -> ${outputPath}`);
+    } catch (e) {
+      console.error("⚠️ ffmpeg encode failed (frames are still available in ./frames):", e.message);
+    }
+  }
+}
+
+// Helper: save a labeled debug screenshot + log the current URL.
 let stepCounter = 0;
 async function debugStep(page, label) {
   stepCounter++;
@@ -65,10 +123,6 @@ async function debugStep(page, label) {
 
   console.log(`📦 Found ${pendingRows.length} pending orders. Launching Browser...`);
 
-  // IMPORTANT: headless "new" mode has a known CDP incompatibility with
-  // puppeteer-screen-recorder that causes:
-  //   "Protocol error (DOM.describeNode): Cannot find context with specified id"
-  // during navigation. Using the legacy headless mode fixes this.
   const browser = await puppeteer.launch({
     headless: true,
     args: [
@@ -97,37 +151,16 @@ async function debugStep(page, label) {
     }
   });
 
-  // Start Video Recording
-  const recorder = new PuppeteerScreenRecorder(page, { fps: 15, aspectRatio: '16:9' });
-  await recorder.start('./videos/bot_live_action.mp4');
+  // Start Video Recording (custom, screenshot-based)
+  const recorder = new SimpleRecorder(page, { intervalMs: 400 });
+  recorder.start();
   console.log("🎥 Screen Recording Started...");
-
-  // Give the recorder a moment to fully attach its CDP session before we
-  // start navigating -- navigating too soon after recorder.start() is what
-  // triggers the "Cannot find context with specified id" crash.
-  await delay(1000);
-
-  // Small helper: retry a navigation once if it hits the known
-  // screen-recorder/CDP race condition, instead of killing the whole run.
-  async function safeGoto(url, options) {
-    try {
-      return await page.goto(url, options);
-    } catch (e) {
-      if (e.message.includes('Cannot find context with specified id') ||
-          e.message.includes('Protocol error')) {
-        console.log(`   ⚠️ Transient CDP error on goto(${url}), retrying once...`);
-        await delay(1500);
-        return await page.goto(url, options);
-      }
-      throw e;
-    }
-  }
 
   let loginSucceeded = false;
 
   try {
     console.log("🔑 Navigating to Login Page...");
-    const loginResponse = await safeGoto('https://a2ztraders.lk/index.php/Dash', {
+    const loginResponse = await page.goto('https://a2ztraders.lk/index.php/Dash', {
       waitUntil: 'networkidle2',
       timeout: 60000,
     });
@@ -201,7 +234,7 @@ async function debugStep(page, label) {
       console.log(`⏳ Processing order for: ${name}`);
 
       try {
-        await safeGoto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2', timeout: 60000 });
         await delay(2000);
         await debugStep(page, `order_${name}_customer_page`);
 
@@ -318,8 +351,7 @@ async function debugStep(page, label) {
       console.error("   and the numbered screenshots in ./debug to see what the site actually returned.");
     }
   } finally {
-    await recorder.stop();
-    console.log("🎬 Recording finished and saved.");
+    await recorder.stop('./videos/bot_live_action.mp4');
     await browser.close();
   }
 })();
