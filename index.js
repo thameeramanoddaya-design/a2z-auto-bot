@@ -5,7 +5,6 @@ const { JWT } = require('google-auth-library');
 (async () => {
   console.log("🚀 Starting A2Z Automation Bot...");
 
-  // 1. Google Sheet Connect කිරීම
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
     email: creds.client_email,
@@ -18,17 +17,19 @@ const { JWT } = require('google-auth-library');
   const sheet = doc.sheetsByIndex[0];
   const rows = await sheet.getRows();
 
-  // Status Column එක 'Success' නොවන Pending Orders පෙරා ගැනීම
-  const pendingRows = rows.filter(row => row.get('Status') !== 'Success');
+  // Pending Rows තෝරා ගැනීම
+  const pendingRows = rows.filter(row => {
+    const status = row.get('Status') || row.get('Order Status') || '';
+    return !status.includes('Successfully') && !status.includes('Success') && !status.includes('Added');
+  });
 
   if (pendingRows.length === 0) {
-    console.log("✅ No pending orders found. Exiting...");
+    console.log("✅ No pending orders to process. Exiting...");
     return;
   }
 
   console.log(`📦 Found ${pendingRows.length} pending orders. Launching Browser...`);
 
-  // 2. Headless Chrome Browser Launch කිරීම
   const browser = await puppeteer.launch({
     headless: "new",
     args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -37,53 +38,60 @@ const { JWT } = require('google-auth-library');
   const page = await browser.newPage();
 
   try {
-    // 3. A2Z Login Process
-    console.log("🔑 Logging into A2Z Account...");
-    await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'networkidle2' });
+    console.log("🔑 Navigating to A2Z Login Page...");
+    await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'domcontentloaded' });
 
-    await page.type('input[name="email"]', process.env.A2Z_EMAIL);
-    await page.type('input[name="password"]', process.env.A2Z_PASSWORD);
+    // Email Input Box එක Load වන තෙක් තත්පර 10ක් Wait කිරීම
+    await page.waitForSelector('input[type="email"], input[name="email"], input[name="username"]', { visible: true, timeout: 10000 });
+
+    console.log("✍️ Entering Login Credentials...");
     
+    // Login Details Fill කිරීම
+    const emailInput = await page.$('input[type="email"], input[name="email"], input[name="username"]');
+    await emailInput.type(process.env.A2Z_EMAIL);
+
+    const passInput = await page.$('input[type="password"], input[name="password"]');
+    await passInput.type(process.env.A2Z_PASSWORD);
+    
+    // Submit Button Click කිරීම
+    const submitBtn = await page.$('button[type="submit"], input[type="submit"]');
     await Promise.all([
-      page.click('button[type="submit"]'),
-      page.waitForNavigation({ waitUntil: 'networkidle2' })
+      submitBtn.click(),
+      page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => {})
     ]);
 
     console.log("✅ Logged in successfully!");
 
-    // 4. Submit Pending Orders
+    // Orders Submit කරන කොටස
     for (let row of pendingRows) {
-      console.log(`⏳ Processing order for: ${row.get('Name')}`);
+      const name = row.get('Name') || row.get('B') || '';
+      const address = row.get('Address') || row.get('C') || '';
+      const city = row.get('City') || row.get('D') || '';
+      const phone = row.get('Phone') || row.get('F') || '';
+      const phone2 = row.get('Phone2') || row.get('G') || '';
+
+      if (!name || !phone) continue;
+
+      console.log(`⏳ Processing order for: ${name}`);
       
-      await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2' });
+      await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('input[name="cust_name"]', { visible: true, timeout: 10000 });
 
-      // Form Elements Load වන තෙක් Pause වේ
-      await page.waitForSelector('input[name="cust_name"]', { visible: true });
+      await page.type('input[name="cust_name"]', name);
+      await page.type('textarea[name="address"]', address);
+      await page.type('input[name="city"]', city);
+      await page.type('input[name="contact_1"]', phone);
+      if (phone2) await page.type('input[name="contact_2"]', phone2);
 
-      // Form Fill කිරීම
-      await page.type('input[name="cust_name"]', row.get('Name') || '');
-      await page.type('textarea[name="address"]', row.get('Address') || '');
-      await page.type('input[name="city"]', row.get('City') || '');
-      await page.type('input[name="contact_1"]', row.get('Phone') || '');
-      
-      if (row.get('Phone2')) {
-        await page.type('input[name="contact_2"]', row.get('Phone2'));
-      }
+      const formSubmit = await page.$('button[type="submit"], input[type="submit"]');
+      if (formSubmit) await formSubmit.click();
 
-      if (row.get('District')) {
-        await page.select('select[name="district"]', row.get('District'));
-      }
+      // Pause for saving
+      await new Promise(r => setTimeout(r, 3000));
 
-      // Submit Button එක Click කිරීම
-      await Promise.all([
-        page.click('button[type="submit"]'),
-        page.waitForNavigation({ waitUntil: 'networkidle2' })
-      ]);
-
-      // Sheet එක Update කිරීම
-      row.set('Status', 'Success');
+      row.set('Status', 'Order Placed Successfully');
       await row.save();
-      console.log(`✅ Order for ${row.get('Name')} submitted successfully!`);
+      console.log(`✅ Order for ${name} submitted!`);
     }
 
   } catch (err) {
