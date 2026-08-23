@@ -1,9 +1,10 @@
 const puppeteer = require('puppeteer');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
+const fs = require('fs');
 
 (async () => {
-  console.log("🚀 Starting A2Z Complete Precise UI Automation Bot...");
+  console.log("🚀 Starting A2Z Automation Bot with Screenshot & Error Capture...");
 
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
@@ -52,7 +53,6 @@ const { JWT } = require('google-auth-library');
     console.log("✅ Logged in successfully!");
 
     for (let row of pendingRows) {
-      // Fetch data based on Sheet headers (B, C, D, E, F, G, I, J)
       const name = (row.get('Customer Name') || row.get('B') || '').trim();
       const address = (row.get('Address') || row.get('C') || '').trim();
       const city = (row.get('City') || row.get('D') || '').trim();
@@ -66,124 +66,141 @@ const { JWT } = require('google-auth-library');
 
       console.log(`⏳ Processing UI order for: ${name} | Product: ${prodId}`);
 
-      // Go to Customer Order Page
-      await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2' });
-      await page.waitForTimeout(2000);
+      try {
+        await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2' });
+        await page.waitForTimeout(2000);
 
-      // --- Left Form Fill ---
-      const textInputs = await page.$$('input[type="text"]');
-      if (textInputs.length >= 1) await textInputs[0].type(name);      // Customer Name
-      if (textInputs.length >= 2) await textInputs[1].type(address);   // Address
+        // --- Fill Customer Details ---
+        const textInputs = await page.$$('input[type="text"]');
+        if (textInputs.length >= 1) await textInputs[0].type(name);
+        if (textInputs.length >= 2) await textInputs[1].type(address);
 
-      const selects = await page.$$('select');
+        const selects = await page.$$('select');
 
-      // Select City Dropdown
-      if (selects.length >= 1 && city) {
-        await page.evaluate((sel, val) => {
-          for (let opt of sel.options) {
-            if (opt.text.toLowerCase().trim().includes(val.toLowerCase())) {
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              break;
-            }
-          }
-        }, selects[0], city);
-        await page.waitForTimeout(500);
-      }
-
-      // Select District Dropdown
-      if (selects.length >= 2 && district) {
-        await page.evaluate((sel, val) => {
-          for (let opt of sel.options) {
-            if (opt.text.toLowerCase().trim().includes(val.toLowerCase())) {
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              break;
-            }
-          }
-        }, selects[1], district);
-        await page.waitForTimeout(500);
-      }
-
-      if (textInputs.length >= 3) await textInputs[2].type(phone);     // Phone 1
-      if (textInputs.length >= 4 && phone2) await textInputs[3].type(phone2); // Phone 2
-
-      // Select Order Source -> FB Lead
-      if (selects.length >= 3) {
-        await page.evaluate((sel) => {
-          for (let opt of sel.options) {
-            if (opt.text.includes('FB Lead')) {
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              break;
-            }
-          }
-        }, selects[2]);
-      }
-
-      // --- Right Form: Product Search, Load & Select ---
-      if (prodId) {
-        console.log(`🔍 Searching Product ID: ${prodId}`);
-        const prodSearchInput = await page.$('input[placeholder*="Select a product"], .select2-search__field');
-        
-        if (prodSearchInput) {
-          await prodSearchInput.click();
-          await prodSearchInput.type(prodId, { delay: 100 });
-          await page.waitForTimeout(1500); // Wait for list to search & show
-          await page.keyboard.press('Enter');
-          await page.waitForTimeout(1000);
-        } else if (selects.length >= 4) {
-          await page.evaluate((sel, pId) => {
+        // Select City
+        if (selects.length >= 1 && city) {
+          await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
-              if (opt.text.includes(pId)) {
+              if (opt.text.toLowerCase().trim().includes(val.toLowerCase())) {
                 sel.value = opt.value;
                 sel.dispatchEvent(new Event('change', { bubbles: true }));
                 break;
               }
             }
-          }, selects[3], prodId);
+          }, selects[0], city);
         }
+
+        // Select District
+        if (selects.length >= 2 && district) {
+          await page.evaluate((sel, val) => {
+            for (let opt of sel.options) {
+              if (opt.text.toLowerCase().trim().includes(val.toLowerCase())) {
+                sel.value = opt.value;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                break;
+              }
+            }
+          }, selects[1], district);
+        }
+
+        if (textInputs.length >= 3) await textInputs[2].type(phone);
+        if (textInputs.length >= 4 && phone2) await textInputs[3].type(phone2);
+
+        // Select Order Source -> FB Lead
+        if (selects.length >= 3) {
+          await page.evaluate((sel) => {
+            for (let opt of sel.options) {
+              if (opt.text.includes('FB Lead')) {
+                sel.value = opt.value;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                break;
+              }
+            }
+          }, selects[2]);
+        }
+
+        // --- Product Search & Selection ---
+        if (prodId) {
+          console.log(`🔍 Searching Product ID: ${prodId}`);
+          const prodSearchInput = await page.$('input[placeholder*="Select a product"], .select2-search__field');
+          
+          if (prodSearchInput) {
+            await prodSearchInput.click();
+            await prodSearchInput.type(prodId, { delay: 100 });
+            await page.waitForTimeout(1500);
+            await page.keyboard.press('Enter');
+            await page.waitForTimeout(1000);
+          } else if (selects.length >= 4) {
+            await page.evaluate((sel, pId) => {
+              for (let opt of sel.options) {
+                if (opt.text.includes(pId)) {
+                  sel.value = opt.value;
+                  sel.dispatchEvent(new Event('change', { bubbles: true }));
+                  break;
+                }
+              }
+            }, selects[3], prodId);
+          }
+        }
+
+        // Set Price
+        const saleAmountInput = await page.$('input[placeholder*="Sale Amount"]');
+        if (saleAmountInput) {
+          await saleAmountInput.click({ clickCount: 3 });
+          await saleAmountInput.type(String(price));
+        } else if (textInputs.length >= 6) {
+          await textInputs[5].click({ clickCount: 3 });
+          await textInputs[5].type(String(price));
+        }
+
+        await page.waitForTimeout(1000);
+
+        // Click "+ Add Product"
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
+          const addBtn = btns.find(b => b.textContent.includes('Add Product'));
+          if (addBtn) addBtn.click();
+        });
+
+        await page.waitForTimeout(2000);
+
+        // Click "Add Order" Final Submission
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
+          const submitBtn = btns.find(b => b.textContent.includes('Add Order'));
+          if (submitBtn) submitBtn.click();
+        });
+
+        await page.waitForTimeout(3000);
+
+        // --- Check for Error Popups / Alert Messages on Screen ---
+        const pageError = await page.evaluate(() => {
+          const alert = document.querySelector('.alert, .toast, .swal-text, .error-msg, .invalid-feedback');
+          return alert ? alert.innerText.trim() : null;
+        });
+
+        if (pageError) {
+          console.error(`⚠️ UI Error Alert detected: ${pageError}`);
+          await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
+          row.set('Status', `Failed: ${pageError}`);
+          await row.save();
+        } else {
+          row.set('Status', 'Order Placed Successfully');
+          await row.save();
+          console.log(`✅ Order for ${name} completed successfully!`);
+        }
+
+      } catch (orderError) {
+        console.error(`❌ Order Exception for ${name}:`, orderError.message);
+        await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
+        row.set('Status', `Failed: ${orderError.message}`);
+        await row.save();
       }
-
-      // Sale Amount Auto-Fill
-      const saleAmountInput = await page.$('input[placeholder*="Sale Amount"]');
-      if (saleAmountInput) {
-        await saleAmountInput.click({ clickCount: 3 });
-        await saleAmountInput.type(String(price));
-      } else if (textInputs.length >= 6) {
-        await textInputs[5].click({ clickCount: 3 });
-        await textInputs[5].type(String(price));
-      }
-
-      await page.waitForTimeout(1000);
-
-      // Click "+ Add Product" Button
-      console.log("➕ Adding Product to Order Table...");
-      await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
-        const addBtn = btns.find(b => b.textContent.includes('Add Product'));
-        if (addBtn) addBtn.click();
-      });
-
-      await page.waitForTimeout(2000);
-
-      // Click "Add Order" Final Submission
-      console.log("💾 Clicking Add Order Button...");
-      await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
-        const submitBtn = btns.find(b => b.textContent.includes('Add Order'));
-        if (submitBtn) submitBtn.click();
-      });
-
-      await page.waitForTimeout(4000);
-
-      row.set('Status', 'Order Placed Successfully');
-      await row.save();
-      console.log(`✅ Order for ${name} completed successfully!`);
     }
 
   } catch (err) {
-    console.error("❌ Error during execution:", err.message);
+    console.error("❌ Fatal Error:", err.message);
+    await page.screenshot({ path: 'error-screenshot.png', fullPage: true }).catch(() => {});
   } finally {
     await browser.close();
     console.log("🔒 Browser closed.");
