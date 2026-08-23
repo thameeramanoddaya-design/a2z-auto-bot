@@ -11,7 +11,7 @@ if (!fs.existsSync('./videos')) {
 }
 
 (async () => {
-  console.log("🚀 Starting Bot with Live Screen Recording...");
+  console.log("🚀 Starting A2Z Bot with Screen Recording...");
 
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
@@ -31,22 +31,30 @@ if (!fs.existsSync('./videos')) {
   });
 
   if (pendingRows.length === 0) {
-    console.log("✅ No pending orders. Exiting...");
+    console.log("✅ No pending orders to process. Exiting...");
     return;
   }
 
+  console.log(`📦 Found ${pendingRows.length} pending orders. Launching Browser...`);
+
   const browser = await puppeteer.launch({
     headless: "new",
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu'
+    ]
   });
 
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
   await page.setViewport({ width: 1366, height: 768 });
 
-  // 🎥 Screen Recording එක Start කිරීම
+  // Start Video Recording
   const recorder = new PuppeteerScreenRecorder(page, { fps: 15, aspectRatio: '16:9' });
   await recorder.start('./videos/bot_live_action.mp4');
+  console.log("🎥 Screen Recording Started...");
 
   try {
     console.log("🔑 Navigating to Login Page...");
@@ -74,6 +82,7 @@ if (!fs.existsSync('./videos')) {
       ]);
 
       await delay(2000);
+      console.log("✅ Logged in successfully!");
     }
 
     for (let row of pendingRows) {
@@ -87,6 +96,8 @@ if (!fs.existsSync('./videos')) {
       const price = (row.get('Price') || row.get('J') || '500').trim();
 
       if (!name || !phone) continue;
+
+      console.log(`⏳ Processing order for: ${name}`);
 
       try {
         await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -184,18 +195,20 @@ if (!fs.existsSync('./videos')) {
 
         row.set('Status', 'Order Placed Successfully');
         await row.save();
+        console.log(`✅ Order for ${name} completed!`);
 
       } catch (orderError) {
+        console.error(`❌ Order Error for ${name}:`, orderError.message);
         row.set('Status', `Failed: ${orderError.message}`);
         await row.save();
       }
     }
 
   } catch (err) {
-    console.error("Error:", err.message);
+    console.error("❌ Fatal Error:", err.message);
   } finally {
-    // 🎥 Screen Recording එක Stop කිරීම
     await recorder.stop();
+    console.log("🎬 Recording finished and saved.");
     await browser.close();
   }
 })();
