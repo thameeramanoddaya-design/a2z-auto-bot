@@ -1,10 +1,12 @@
 {
-  "name": "a2z-bot",
+  "name": "a2z-auto-bot",
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
-    "google-spreadsheet": "^4.1.2",
     "google-auth-library": "^9.0.0",
-    "puppeteer": "^22.0.0"
+    "google-spreadsheet": "^4.1.1",
+    "puppeteer": "^22.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
