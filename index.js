@@ -5,7 +5,7 @@ const { JWT } = require('google-auth-library');
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
-  console.log("🚀 Starting A2Z Automation Bot...");
+  console.log("🚀 Starting A2Z Automation Bot (Login Fix)...");
 
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
@@ -40,17 +40,30 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   await page.setViewport({ width: 1366, height: 768 });
 
   try {
-    console.log("🔑 [LIVE LOG] Logging into A2Z Account...");
+    // 1. Login Logic Fix
+    console.log("🔑 Navigating to Login Page...");
     await page.goto('https://a2ztraders.lk/index.php/Dash', { waitUntil: 'networkidle2' });
 
+    console.log("📝 Typing Login Credentials...");
     await page.type('input[type="text"], input[name="email"]', process.env.A2Z_EMAIL);
     await page.type('input[type="password"], input[name="password"]', process.env.A2Z_PASSWORD);
 
+    console.log("👆 Submitting Login Form...");
     await Promise.all([
-      page.click('button[type="submit"], input[type="submit"]'),
+      page.evaluate(() => {
+        const form = document.querySelector('form');
+        if (form) {
+          form.submit();
+        } else {
+          const btn = document.querySelector('button[type="submit"], input[type="submit"], .btn');
+          if (btn) btn.click();
+        }
+      }),
       page.waitForNavigation({ waitUntil: 'networkidle2' })
     ]);
-    console.log("✅ [LIVE LOG] Logged in successfully!");
+
+    await delay(2000);
+    console.log("✅ Logged in successfully! Dashboard Loaded.");
 
     for (let row of pendingRows) {
       const name = (row.get('Customer Name') || row.get('B') || '').trim();
@@ -64,21 +77,21 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
       if (!name || !phone) continue;
 
-      console.log(`⏳ [LIVE LOG] Navigating to Customer Form for: ${name}`);
+      console.log(`⏳ Processing UI order for: ${name} | Product: ${prodId}`);
 
       try {
         await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2' });
         await delay(1500);
 
-        console.log(`📝 [LIVE LOG] Filling Name: ${name} & Address: ${address}`);
+        // --- Fill Customer Details ---
         const textInputs = await page.$$('input[type="text"]');
         if (textInputs.length >= 1) await textInputs[0].type(name);
         if (textInputs.length >= 2) await textInputs[1].type(address);
 
         const selects = await page.$$('select');
 
+        // Select City
         if (selects.length >= 1 && city) {
-          console.log(`🌆 [LIVE LOG] Selecting City: ${city}`);
           await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
               if (opt.text.toLowerCase().trim().includes(val.toLowerCase())) {
@@ -90,8 +103,8 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }, selects[0], city);
         }
 
+        // Select District
         if (selects.length >= 2 && district) {
-          console.log(`📍 [LIVE LOG] Selecting District: ${district}`);
           await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
               if (opt.text.toLowerCase().trim().includes(val.toLowerCase())) {
@@ -106,6 +119,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         if (textInputs.length >= 3) await textInputs[2].type(phone);
         if (textInputs.length >= 4 && phone2) await textInputs[3].type(phone2);
 
+        // Select Order Source -> FB Lead
         if (selects.length >= 3) {
           await page.evaluate((sel) => {
             for (let opt of sel.options) {
@@ -118,8 +132,8 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }, selects[2]);
         }
 
+        // Product Selection
         if (prodId) {
-          console.log(`📦 [LIVE LOG] Typing Product ID: ${prodId}`);
           const prodSearchInput = await page.$('input[placeholder*="Select a product"], .select2-search__field');
           if (prodSearchInput) {
             await prodSearchInput.click();
@@ -139,6 +153,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }
         }
 
+        // Set Sale Price
         const saleAmountInput = await page.$('input[placeholder*="Sale Amount"]');
         if (saleAmountInput) {
           await saleAmountInput.click({ clickCount: 3 });
@@ -150,7 +165,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         await delay(500);
 
-        console.log("➕ [LIVE LOG] Clicking Add Product...");
+        // Click "+ Add Product"
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
           const addBtn = btns.find(b => b.textContent.includes('Add Product'));
@@ -159,33 +174,34 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         await delay(1500);
 
-        console.log("💾 [LIVE LOG] Submitting Final Order...");
+        // Click "Add Order" Final Submission
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
           const submitBtn = btns.find(b => b.textContent.includes('Add Order'));
           if (submitBtn) submitBtn.click();
         });
 
-        await delay(2000);
+        await delay(2500);
 
+        // Alert Errors Check
         const pageError = await page.evaluate(() => {
           const alert = document.querySelector('.alert, .toast, .swal-text, .error-msg, .invalid-feedback');
           return alert ? alert.innerText.trim() : null;
         });
 
         if (pageError) {
-          console.error(`⚠️ [LIVE LOG] UI Error detected: ${pageError}`);
+          console.error(`⚠️ UI Alert Message: ${pageError}`);
           await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
           row.set('Status', `Failed: ${pageError}`);
           await row.save();
         } else {
           row.set('Status', 'Order Placed Successfully');
           await row.save();
-          console.log(`✅ [LIVE LOG] Order for ${name} completed successfully!`);
+          console.log(`✅ Order for ${name} completed successfully!`);
         }
 
       } catch (orderError) {
-        console.error(`❌ [LIVE LOG] Order Exception for ${name}:`, orderError.message);
+        console.error(`❌ Order Exception for ${name}:`, orderError.message);
         try {
           await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
         } catch (e) {}
@@ -195,12 +211,12 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     }
 
   } catch (err) {
-    console.error("❌ Fatal Error:", err.message);
+    console.error("❌ Fatal Error during Login or Exec:", err.message);
     try {
       await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
     } catch (e) {}
   } finally {
     await browser.close();
-    console.log("🔒 [LIVE LOG] Browser closed.");
+    console.log("🔒 Browser closed.");
   }
 })();
