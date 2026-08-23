@@ -1,29 +1,17 @@
 const puppeteer = require('puppeteer');
+const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const fs = require('fs');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Screenshots Save කිරීමට Folder එකක් සෑදීම
-if (!fs.existsSync('./screenshots')) {
-  fs.mkdirSync('./screenshots');
-}
-
-let ssCounter = 1;
-async function takeScreenshot(page, name) {
-  try {
-    const filename = `./screenshots/${String(ssCounter).padStart(2, '0')}_${name}.png`;
-    await page.screenshot({ path: filename, fullPage: true });
-    console.log(`📸 Screenshot saved: ${filename}`);
-    ssCounter++;
-  } catch (e) {
-    console.error(`Failed to take screenshot ${name}:`, e.message);
-  }
+if (!fs.existsSync('./videos')) {
+  fs.mkdirSync('./videos');
 }
 
 (async () => {
-  console.log("🚀 Starting A2Z Automation Bot with Step Screenshots...");
+  console.log("🚀 Starting Bot with Live Screen Recording...");
 
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
@@ -43,11 +31,9 @@ async function takeScreenshot(page, name) {
   });
 
   if (pendingRows.length === 0) {
-    console.log("✅ No pending orders to process. Exiting...");
+    console.log("✅ No pending orders. Exiting...");
     return;
   }
-
-  console.log(`📦 Found ${pendingRows.length} pending orders. Launching Browser...`);
 
   const browser = await puppeteer.launch({
     headless: "new",
@@ -58,10 +44,13 @@ async function takeScreenshot(page, name) {
   await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
   await page.setViewport({ width: 1366, height: 768 });
 
+  // 🎥 Screen Recording එක Start කිරීම
+  const recorder = new PuppeteerScreenRecorder(page, { fps: 15, aspectRatio: '16:9' });
+  await recorder.start('./videos/bot_live_action.mp4');
+
   try {
     console.log("🔑 Navigating to Login Page...");
     await page.goto('https://a2ztraders.lk/index.php/Dash', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await takeScreenshot(page, 'login_page_loaded');
 
     await page.waitForSelector('input[type="text"], input[name="email"], input[type="email"]', { visible: true, timeout: 30000 });
 
@@ -69,9 +58,8 @@ async function takeScreenshot(page, name) {
     const passwordInput = await page.$('input[type="password"], input[name="password"]');
 
     if (emailInput && passwordInput) {
-      await emailInput.type(process.env.A2Z_EMAIL);
-      await passwordInput.type(process.env.A2Z_PASSWORD);
-      await takeScreenshot(page, 'login_credentials_typed');
+      await emailInput.type(process.env.A2Z_EMAIL, { delay: 100 });
+      await passwordInput.type(process.env.A2Z_PASSWORD, { delay: 100 });
 
       await Promise.all([
         page.evaluate(() => {
@@ -86,7 +74,6 @@ async function takeScreenshot(page, name) {
       ]);
 
       await delay(2000);
-      await takeScreenshot(page, 'dashboard_after_login');
     }
 
     for (let row of pendingRows) {
@@ -104,11 +91,10 @@ async function takeScreenshot(page, name) {
       try {
         await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'domcontentloaded', timeout: 60000 });
         await delay(2000);
-        await takeScreenshot(page, `customer_form_${name}`);
 
         const textInputs = await page.$$('input[type="text"]');
-        if (textInputs.length >= 1) await textInputs[0].type(name);
-        if (textInputs.length >= 2) await textInputs[1].type(address);
+        if (textInputs.length >= 1) await textInputs[0].type(name, { delay: 50 });
+        if (textInputs.length >= 2) await textInputs[1].type(address, { delay: 50 });
 
         const selects = await page.$$('select');
 
@@ -136,8 +122,8 @@ async function takeScreenshot(page, name) {
           }, selects[1], district);
         }
 
-        if (textInputs.length >= 3) await textInputs[2].type(phone);
-        if (textInputs.length >= 4 && phone2) await textInputs[3].type(phone2);
+        if (textInputs.length >= 3) await textInputs[2].type(phone, { delay: 50 });
+        if (textInputs.length >= 4 && phone2) await textInputs[3].type(phone2, { delay: 50 });
 
         if (selects.length >= 3) {
           await page.evaluate((sel) => {
@@ -155,7 +141,7 @@ async function takeScreenshot(page, name) {
           const prodSearchInput = await page.$('input[placeholder*="Select a product"], .select2-search__field');
           if (prodSearchInput) {
             await prodSearchInput.click();
-            await prodSearchInput.type(prodId);
+            await prodSearchInput.type(prodId, { delay: 50 });
             await delay(500);
             await page.keyboard.press('Enter');
           } else if (selects.length >= 4) {
@@ -174,13 +160,11 @@ async function takeScreenshot(page, name) {
         const saleAmountInput = await page.$('input[placeholder*="Sale Amount"]');
         if (saleAmountInput) {
           await saleAmountInput.click({ clickCount: 3 });
-          await saleAmountInput.type(String(price));
+          await saleAmountInput.type(String(price), { delay: 50 });
         } else if (textInputs.length >= 6) {
           await textInputs[5].click({ clickCount: 3 });
-          await textInputs[5].type(String(price));
+          await textInputs[5].type(String(price), { delay: 50 });
         }
-
-        await takeScreenshot(page, `form_filled_${name}`);
 
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
@@ -197,21 +181,21 @@ async function takeScreenshot(page, name) {
         });
 
         await delay(2500);
-        await takeScreenshot(page, `after_submit_${name}`);
 
         row.set('Status', 'Order Placed Successfully');
         await row.save();
 
       } catch (orderError) {
-        await takeScreenshot(page, `error_${name}`);
         row.set('Status', `Failed: ${orderError.message}`);
         await row.save();
       }
     }
 
   } catch (err) {
-    await takeScreenshot(page, 'fatal_error');
+    console.error("Error:", err.message);
   } finally {
+    // 🎥 Screen Recording එක Stop කිරීම
+    await recorder.stop();
     await browser.close();
   }
 })();
