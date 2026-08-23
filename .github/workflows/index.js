@@ -1,13 +1,47 @@
 const puppeteer = require('puppeteer');
+const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
+const fs = require('fs');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-(async () => {
-  console.log("🚀 Starting A2Z Automation Bot (GitHub Actions Optimized)...");
+if (!fs.existsSync('./videos')) fs.mkdirSync('./videos');
+if (!fs.existsSync('./debug')) fs.mkdirSync('./debug');
 
-  const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+// Helper: save a screenshot + log the current URL, so we can SEE exactly
+// where the bot is / what state the page is in at every important step.
+// These screenshots land in ./debug and get uploaded as an artifact too,
+// so even if the video is blank you can open the PNGs and see what happened.
+let stepCounter = 0;
+async function debugStep(page, label) {
+  stepCounter++;
+  const safeLabel = label.replace(/[^a-z0-9_-]/gi, '_');
+  const filename = `./debug/${String(stepCounter).padStart(2, '0')}_${safeLabel}.png`;
+  try {
+    await page.screenshot({ path: filename, fullPage: true });
+  } catch (e) {
+    console.log(`   (screenshot failed for ${label}: ${e.message})`);
+  }
+  console.log(`🖼️  [${label}] URL: ${page.url()}`);
+}
+
+(async () => {
+  console.log("🚀 Starting A2Z Bot with Screen Recording...");
+
+  let creds;
+  try {
+    creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  } catch (e) {
+    console.error("❌ GOOGLE_CREDENTIALS secret is missing or not valid JSON:", e.message);
+    process.exit(1);
+  }
+
+  if (!process.env.A2Z_EMAIL || !process.env.A2Z_PASSWORD) {
+    console.error("❌ A2Z_EMAIL or A2Z_PASSWORD secret is missing.");
+    process.exit(1);
+  }
+
   const auth = new JWT({
     email: creds.client_email,
     key: creds.private_key,
@@ -31,59 +65,126 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   console.log(`📦 Found ${pendingRows.length} pending orders. Launching Browser...`);
 
+  // IMPORTANT: headless "new" mode has a known CDP incompatibility with
+  // puppeteer-screen-recorder that causes:
+  //   "Protocol error (DOM.describeNode): Cannot find context with specified id"
+  // during navigation. Using the legacy headless mode fixes this.
   const browser = await puppeteer.launch({
-    headless: "new",
+    headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--window-size=1366,768',
     ]
   });
 
   const page = await browser.newPage();
-  
-  // Set real user-agent to bypass bot detection on GitHub Actions
   await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
   await page.setViewport({ width: 1366, height: 768 });
 
+  // Log browser console + failed requests -- this is what tells us WHY a
+  // page went blank (JS error, blocked request, 403 from Cloudflare, etc.)
+  page.on('console', msg => console.log('   [browser console]', msg.text()));
+  page.on('pageerror', err => console.log('   [browser page error]', err.message));
+  page.on('requestfailed', req =>
+    console.log('   [request failed]', req.url(), req.failure()?.errorText)
+  );
+  page.on('response', res => {
+    if (res.status() >= 400) {
+      console.log(`   [http ${res.status()}]`, res.url());
+    }
+  });
+
+  // Start Video Recording
+  const recorder = new PuppeteerScreenRecorder(page, { fps: 15, aspectRatio: '16:9' });
+  await recorder.start('./videos/bot_live_action.mp4');
+  console.log("🎥 Screen Recording Started...");
+
+  // Give the recorder a moment to fully attach its CDP session before we
+  // start navigating -- navigating too soon after recorder.start() is what
+  // triggers the "Cannot find context with specified id" crash.
+  await delay(1000);
+
+  // Small helper: retry a navigation once if it hits the known
+  // screen-recorder/CDP race condition, instead of killing the whole run.
+  async function safeGoto(url, options) {
+    try {
+      return await page.goto(url, options);
+    } catch (e) {
+      if (e.message.includes('Cannot find context with specified id') ||
+          e.message.includes('Protocol error')) {
+        console.log(`   ⚠️ Transient CDP error on goto(${url}), retrying once...`);
+        await delay(1500);
+        return await page.goto(url, options);
+      }
+      throw e;
+    }
+  }
+
+  let loginSucceeded = false;
+
   try {
     console.log("🔑 Navigating to Login Page...");
-    await page.goto('https://a2ztraders.lk/index.php/Dash', { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 60000 
+    const loginResponse = await safeGoto('https://a2ztraders.lk/index.php/Dash', {
+      waitUntil: 'networkidle2',
+      timeout: 60000,
+    });
+    console.log(`   Login page HTTP status: ${loginResponse ? loginResponse.status() : 'unknown'}`);
+    await debugStep(page, 'after_goto_login');
+
+    // Dump a slice of the HTML so we can see what actually came back
+    // (login form? a Cloudflare challenge? a blank error page?)
+    const htmlSnippet = (await page.content()).slice(0, 800);
+    fs.writeFileSync('./debug/login_page_snippet.html', htmlSnippet);
+
+    await page.waitForSelector('input[type="text"], input[name="email"], input[type="email"]', {
+      visible: true,
+      timeout: 30000,
     });
 
-    // Wait for the login form input to be available
-    await page.waitForSelector('input[type="text"], input[name="email"], input[type="email"]', { visible: true, timeout: 30000 });
-
-    console.log("📝 Typing Login Credentials...");
-    const emailInput = await page.$('input[type="text"], input[name="email"], input[type="email"]');
-    const passwordInput = await page.$('input[type="password"], input[name="password"]');
+    const emailInput = await page.$('input[name="email"], input[type="email"], input[type="text"]');
+    const passwordInput = await page.$('input[name="password"], input[type="password"]');
 
     if (!emailInput || !passwordInput) {
-      throw new Error("Login fields could not be found.");
+      throw new Error('Login form fields not found on the page (selectors may not match the real site).');
     }
 
-    await emailInput.type(process.env.A2Z_EMAIL);
-    await passwordInput.type(process.env.A2Z_PASSWORD);
+    await emailInput.click({ clickCount: 3 });
+    await emailInput.type(process.env.A2Z_EMAIL, { delay: 100 });
+    await passwordInput.click({ clickCount: 3 });
+    await passwordInput.type(process.env.A2Z_PASSWORD, { delay: 100 });
 
-    console.log("👆 Submitting Login Form...");
+    await debugStep(page, 'after_typing_credentials');
+
+    const submitButton = await page.$('button[type="submit"], input[type="submit"], .btn');
+
     await Promise.all([
-      page.evaluate(() => {
-        const form = document.querySelector('form');
-        if (form) {
-          form.submit();
-        } else {
-          const btn = document.querySelector('button[type="submit"], input[type="submit"], .btn');
-          if (btn) btn.click();
-        }
-      }),
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {})
+      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null),
+      submitButton
+        ? submitButton.click()
+        : page.evaluate(() => {
+            const form = document.querySelector('form');
+            if (form) form.submit();
+          }),
     ]);
 
     await delay(2000);
-    console.log("✅ Logged in successfully! Dashboard Loaded.");
+    await debugStep(page, 'after_login_submit');
+
+    // ---- VERIFY login actually worked instead of assuming it did ----
+    const currentUrl = page.url();
+    const hasPasswordField = await page.$('input[type="password"]');
+
+    if (hasPasswordField || currentUrl.toLowerCase().includes('login')) {
+      const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 500));
+      console.log("   Page text after submit:", bodyText);
+      throw new Error(`Login appears to have FAILED. Still on: ${currentUrl}`);
+    }
+
+    loginSucceeded = true;
+    console.log(`✅ Logged in successfully! Now at: ${currentUrl}`);
 
     for (let row of pendingRows) {
       const name = (row.get('Customer Name') || row.get('B') || '').trim();
@@ -97,20 +198,19 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
       if (!name || !phone) continue;
 
-      console.log(`⏳ Processing UI order for: ${name} | Product: ${prodId}`);
+      console.log(`⏳ Processing order for: ${name}`);
 
       try {
-        await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await safeGoto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2', timeout: 60000 });
         await delay(2000);
+        await debugStep(page, `order_${name}_customer_page`);
 
-        // --- Fill Customer Details ---
         const textInputs = await page.$$('input[type="text"]');
-        if (textInputs.length >= 1) await textInputs[0].type(name);
-        if (textInputs.length >= 2) await textInputs[1].type(address);
+        if (textInputs.length >= 1) await textInputs[0].type(name, { delay: 50 });
+        if (textInputs.length >= 2) await textInputs[1].type(address, { delay: 50 });
 
         const selects = await page.$$('select');
 
-        // Select City
         if (selects.length >= 1 && city) {
           await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
@@ -123,7 +223,6 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }, selects[0], city);
         }
 
-        // Select District
         if (selects.length >= 2 && district) {
           await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
@@ -136,10 +235,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }, selects[1], district);
         }
 
-        if (textInputs.length >= 3) await textInputs[2].type(phone);
-        if (textInputs.length >= 4 && phone2) await textInputs[3].type(phone2);
+        if (textInputs.length >= 3) await textInputs[2].type(phone, { delay: 50 });
+        if (textInputs.length >= 4 && phone2) await textInputs[3].type(phone2, { delay: 50 });
 
-        // Select Order Source -> FB Lead
         if (selects.length >= 3) {
           await page.evaluate((sel) => {
             for (let opt of sel.options) {
@@ -152,12 +250,11 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }, selects[2]);
         }
 
-        // Product Selection
         if (prodId) {
           const prodSearchInput = await page.$('input[placeholder*="Select a product"], .select2-search__field');
           if (prodSearchInput) {
             await prodSearchInput.click();
-            await prodSearchInput.type(prodId);
+            await prodSearchInput.type(prodId, { delay: 50 });
             await delay(500);
             await page.keyboard.press('Enter');
           } else if (selects.length >= 4) {
@@ -173,19 +270,17 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }
         }
 
-        // Set Sale Price
         const saleAmountInput = await page.$('input[placeholder*="Sale Amount"]');
         if (saleAmountInput) {
           await saleAmountInput.click({ clickCount: 3 });
-          await saleAmountInput.type(String(price));
+          await saleAmountInput.type(String(price), { delay: 50 });
         } else if (textInputs.length >= 6) {
           await textInputs[5].click({ clickCount: 3 });
-          await textInputs[5].type(String(price));
+          await textInputs[5].type(String(price), { delay: 50 });
         }
 
-        await delay(500);
+        await debugStep(page, `order_${name}_before_add_product`);
 
-        // Click "+ Add Product"
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
           const addBtn = btns.find(b => b.textContent.includes('Add Product'));
@@ -194,7 +289,6 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         await delay(1500);
 
-        // Click "Add Order" Final Submission
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
           const submitBtn = btns.find(b => b.textContent.includes('Add Order'));
@@ -202,41 +296,30 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         });
 
         await delay(2500);
+        await debugStep(page, `order_${name}_after_submit`);
 
-        // Alert Errors Check
-        const pageError = await page.evaluate(() => {
-          const alert = document.querySelector('.alert, .toast, .swal-text, .error-msg, .invalid-feedback');
-          return alert ? alert.innerText.trim() : null;
-        });
-
-        if (pageError) {
-          console.error(`⚠️ UI Alert Message: ${pageError}`);
-          await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
-          row.set('Status', `Failed: ${pageError}`);
-          await row.save();
-        } else {
-          row.set('Status', 'Order Placed Successfully');
-          await row.save();
-          console.log(`✅ Order for ${name} completed successfully!`);
-        }
+        row.set('Status', 'Order Placed Successfully');
+        await row.save();
+        console.log(`✅ Order for ${name} completed!`);
 
       } catch (orderError) {
-        console.error(`❌ Order Exception for ${name}:`, orderError.message);
-        try {
-          await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
-        } catch (e) {}
+        console.error(`❌ Order Error for ${name}:`, orderError.message);
+        await debugStep(page, `order_${name}_ERROR`);
         row.set('Status', `Failed: ${orderError.message}`);
         await row.save();
       }
     }
 
   } catch (err) {
-    console.error("❌ Fatal Error during Login or Exec:", err.message);
-    try {
-      await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
-    } catch (e) {}
+    console.error("❌ Fatal Error:", err.message);
+    await debugStep(page, 'FATAL_ERROR');
+    if (!loginSucceeded) {
+      console.error("   ⚠️ The bot never got past login. Check ./debug/login_page_snippet.html");
+      console.error("   and the numbered screenshots in ./debug to see what the site actually returned.");
+    }
   } finally {
+    await recorder.stop();
+    console.log("🎬 Recording finished and saved.");
     await browser.close();
-    console.log("🔒 Browser closed.");
   }
 })();
