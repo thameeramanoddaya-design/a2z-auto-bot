@@ -1,12 +1,9 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
-
+const axios = require('axios');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 
 (async () => {
-  console.log("🚀 Starting A2Z Automation Bot with Stealth...");
+  console.log("🚀 Starting A2Z Direct API Automation Bot...");
 
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
@@ -30,42 +27,32 @@ const { JWT } = require('google-auth-library');
     return;
   }
 
-  console.log(`📦 Found ${pendingRows.length} pending orders. Launching Stealth Browser...`);
+  console.log(`📦 Found ${pendingRows.length} pending orders. Connecting to A2Z API...`);
 
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-web-security',
-      '--disable-features=IsolateOrigins,site-per-process'
-    ]
+  const axiosInstance = axios.create({
+    baseURL: 'https://a2ztraders.lk',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    withCredentials: true
   });
 
-  const page = await browser.newPage();
-
   try {
-    console.log("🔑 Navigating to A2Z Login Page...");
-    await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    console.log("🔑 Logging into A2Z Account...");
+    
+    // Login Request
+    const loginParams = new URLSearchParams();
+    loginParams.append('email', process.env.A2Z_EMAIL);
+    loginParams.append('password', process.env.A2Z_PASSWORD);
 
-    await new Promise(r => setTimeout(r, 4000));
+    const loginRes = await axiosInstance.post('/login', loginParams.toString());
 
-    await page.waitForSelector('input[name="email"], input[type="email"]', { visible: true, timeout: 20000 });
-
-    console.log("✍️ Entering Credentials...");
-    await page.type('input[name="email"], input[type="email"]', process.env.A2Z_EMAIL, { delay: 100 });
-    await page.type('input[name="password"], input[type="password"]', process.env.A2Z_PASSWORD, { delay: 100 });
-
-    const submitBtn = await page.$('button[type="submit"], input[type="submit"]');
-    if (submitBtn) {
-      await Promise.all([
-        submitBtn.click(),
-        page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => {})
-      ]);
+    if (loginRes.status === 200) {
+      console.log("✅ Logged in successfully!");
     }
 
-    console.log("✅ Logged in successfully!");
-
+    // Orders Submit කිරීම
     for (let row of pendingRows) {
       const name = row.get('Name') || row.get('B') || '';
       const address = row.get('Address') || row.get('C') || '';
@@ -75,21 +62,16 @@ const { JWT } = require('google-auth-library');
 
       if (!name || !phone) continue;
 
-      console.log(`⏳ Processing order for: ${name}`);
-      
-      await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'domcontentloaded', timeout: 20000 });
-      await page.waitForSelector('input[name="cust_name"]', { visible: true, timeout: 15000 });
+      console.log(`⏳ Submitting order for: ${name}`);
 
-      await page.type('input[name="cust_name"]', name, { delay: 50 });
-      await page.type('textarea[name="address"]', address, { delay: 50 });
-      await page.type('input[name="city"]', city, { delay: 50 });
-      await page.type('input[name="contact_1"]', phone, { delay: 50 });
-      if (phone2) await page.type('input[name="contact_2"]', phone2, { delay: 50 });
+      const orderData = new URLSearchParams();
+      orderData.append('cust_name', name);
+      orderData.append('address', address);
+      orderData.append('city', city);
+      orderData.append('contact_1', phone);
+      if (phone2) orderData.append('contact_2', phone2);
 
-      const formSubmit = await page.$('button[type="submit"], input[type="submit"]');
-      if (formSubmit) await formSubmit.click();
-
-      await new Promise(r => setTimeout(r, 3000));
+      await axiosInstance.post('/Customer', orderData.toString());
 
       row.set('Status', 'Order Placed Successfully');
       await row.save();
@@ -97,9 +79,6 @@ const { JWT } = require('google-auth-library');
     }
 
   } catch (err) {
-    console.error("❌ Error during execution:", err.message);
-  } finally {
-    await browser.close();
-    console.log("🔒 Browser closed.");
+    console.error("❌ Error during API execution:", err.message);
   }
 })();
