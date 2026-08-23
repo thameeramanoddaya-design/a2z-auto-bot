@@ -5,7 +5,7 @@ const { JWT } = require('google-auth-library');
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
-  console.log("🚀 Starting A2Z Simple Automation Bot with Screenshot Capture...");
+  console.log("🚀 Starting A2Z Automation Bot (GitHub Actions Optimized)...");
 
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
@@ -33,25 +33,57 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   const browser = await puppeteer.launch({
     headless: "new",
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu'
+    ]
   });
 
   const page = await browser.newPage();
+  
+  // Set real user-agent to bypass bot detection on GitHub Actions
+  await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
   await page.setViewport({ width: 1366, height: 768 });
 
   try {
-    // 1. Login
-    console.log("🔑 Logging into A2Z Account...");
-    await page.goto('https://a2ztraders.lk/index.php/Dash', { waitUntil: 'networkidle2' });
+    console.log("🔑 Navigating to Login Page...");
+    await page.goto('https://a2ztraders.lk/index.php/Dash', { 
+      waitUntil: 'domcontentloaded', 
+      timeout: 60000 
+    });
 
-    await page.type('input[type="text"], input[name="email"]', process.env.A2Z_EMAIL);
-    await page.type('input[type="password"], input[name="password"]', process.env.A2Z_PASSWORD);
+    // Wait for the login form input to be available
+    await page.waitForSelector('input[type="text"], input[name="email"], input[type="email"]', { visible: true, timeout: 30000 });
 
+    console.log("📝 Typing Login Credentials...");
+    const emailInput = await page.$('input[type="text"], input[name="email"], input[type="email"]');
+    const passwordInput = await page.$('input[type="password"], input[name="password"]');
+
+    if (!emailInput || !passwordInput) {
+      throw new Error("Login fields could not be found.");
+    }
+
+    await emailInput.type(process.env.A2Z_EMAIL);
+    await passwordInput.type(process.env.A2Z_PASSWORD);
+
+    console.log("👆 Submitting Login Form...");
     await Promise.all([
-      page.click('button[type="submit"], input[type="submit"]'),
-      page.waitForNavigation({ waitUntil: 'networkidle2' })
+      page.evaluate(() => {
+        const form = document.querySelector('form');
+        if (form) {
+          form.submit();
+        } else {
+          const btn = document.querySelector('button[type="submit"], input[type="submit"], .btn');
+          if (btn) btn.click();
+        }
+      }),
+      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {})
     ]);
-    console.log("✅ Logged in successfully!");
+
+    await delay(2000);
+    console.log("✅ Logged in successfully! Dashboard Loaded.");
 
     for (let row of pendingRows) {
       const name = (row.get('Customer Name') || row.get('B') || '').trim();
@@ -68,10 +100,10 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       console.log(`⏳ Processing UI order for: ${name} | Product: ${prodId}`);
 
       try {
-        await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2' });
-        await delay(1500);
+        await page.goto('https://a2ztraders.lk/Customer', { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await delay(2000);
 
-        // --- Basic Details Filling ---
+        // --- Fill Customer Details ---
         const textInputs = await page.$$('input[type="text"]');
         if (textInputs.length >= 1) await textInputs[0].type(name);
         if (textInputs.length >= 2) await textInputs[1].type(address);
@@ -120,7 +152,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }, selects[2]);
         }
 
-        // --- Simple Product Selection ---
+        // Product Selection
         if (prodId) {
           const prodSearchInput = await page.$('input[placeholder*="Select a product"], .select2-search__field');
           if (prodSearchInput) {
@@ -141,7 +173,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           }
         }
 
-        // Set Price
+        // Set Sale Price
         const saleAmountInput = await page.$('input[placeholder*="Sale Amount"]');
         if (saleAmountInput) {
           await saleAmountInput.click({ clickCount: 3 });
@@ -169,9 +201,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           if (submitBtn) submitBtn.click();
         });
 
-        await delay(2000);
+        await delay(2500);
 
-        // --- Error Detection & Clear Screenshot Capture ---
+        // Alert Errors Check
         const pageError = await page.evaluate(() => {
           const alert = document.querySelector('.alert, .toast, .swal-text, .error-msg, .invalid-feedback');
           return alert ? alert.innerText.trim() : null;
@@ -199,7 +231,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     }
 
   } catch (err) {
-    console.error("❌ Fatal Error:", err.message);
+    console.error("❌ Fatal Error during Login or Exec:", err.message);
     try {
       await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
     } catch (e) {}
