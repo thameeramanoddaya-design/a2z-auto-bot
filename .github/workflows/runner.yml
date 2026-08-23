@@ -1,39 +1,6 @@
-name: A2Z Automation Bot
-
-on:
-  schedule:
-    - cron: '*/30 * * * *'
-  workflow_dispatch:
-
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install Dependencies
-        run: |
-          npm install puppeteer google-spreadsheet google-auth-library
-
-      - name: Run Automation Bot
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-          A2Z_EMAIL: ${{ secrets.A2Z_EMAIL }}
-          A2Z_PASSWORD: ${{ secrets.A2Z_PASSWORD }}
-        run: node index.js
-
-      - name: Upload Error Screenshot if Failed
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: error-screenshots
-          path: error-screenshot.png
-          if-no-files-found: ignore
+- name: Upload Recorded Video
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bot-video-recording
+        path: videos/
