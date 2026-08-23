@@ -1,10 +1,9 @@
 const puppeteer = require('puppeteer');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
-const fs = require('fs');
 
 (async () => {
-  console.log("🚀 Starting A2Z Automation Bot with Screenshot & Error Capture...");
+  console.log("🚀 Starting A2Z Automation Bot with Enhanced Screenshot Capture...");
 
   const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   const auth = new JWT({
@@ -32,7 +31,15 @@ const fs = require('fs');
 
   const browser = await puppeteer.launch({
     headless: "new",
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu'
+    ]
   });
 
   const page = await browser.newPage();
@@ -77,7 +84,6 @@ const fs = require('fs');
 
         const selects = await page.$$('select');
 
-        // Select City
         if (selects.length >= 1 && city) {
           await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
@@ -90,7 +96,6 @@ const fs = require('fs');
           }, selects[0], city);
         }
 
-        // Select District
         if (selects.length >= 2 && district) {
           await page.evaluate((sel, val) => {
             for (let opt of sel.options) {
@@ -106,7 +111,6 @@ const fs = require('fs');
         if (textInputs.length >= 3) await textInputs[2].type(phone);
         if (textInputs.length >= 4 && phone2) await textInputs[3].type(phone2);
 
-        // Select Order Source -> FB Lead
         if (selects.length >= 3) {
           await page.evaluate((sel) => {
             for (let opt of sel.options) {
@@ -173,7 +177,7 @@ const fs = require('fs');
 
         await page.waitForTimeout(3000);
 
-        // --- Check for Error Popups / Alert Messages on Screen ---
+        // --- Check for Error Popups ---
         const pageError = await page.evaluate(() => {
           const alert = document.querySelector('.alert, .toast, .swal-text, .error-msg, .invalid-feedback');
           return alert ? alert.innerText.trim() : null;
@@ -181,7 +185,8 @@ const fs = require('fs');
 
         if (pageError) {
           console.error(`⚠️ UI Error Alert detected: ${pageError}`);
-          await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
+          await page.waitForTimeout(1000);
+          await page.screenshot({ path: 'error-screenshot.png', fullPage: true, captureBeyondViewport: true });
           row.set('Status', `Failed: ${pageError}`);
           await row.save();
         } else {
@@ -192,7 +197,8 @@ const fs = require('fs');
 
       } catch (orderError) {
         console.error(`❌ Order Exception for ${name}:`, orderError.message);
-        await page.screenshot({ path: 'error-screenshot.png', fullPage: true });
+        await page.waitForTimeout(1000);
+        await page.screenshot({ path: 'error-screenshot.png', fullPage: true, captureBeyondViewport: true });
         row.set('Status', `Failed: ${orderError.message}`);
         await row.save();
       }
@@ -200,7 +206,8 @@ const fs = require('fs');
 
   } catch (err) {
     console.error("❌ Fatal Error:", err.message);
-    await page.screenshot({ path: 'error-screenshot.png', fullPage: true }).catch(() => {});
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: 'error-screenshot.png', fullPage: true, captureBeyondViewport: true }).catch(() => {});
   } finally {
     await browser.close();
     console.log("🔒 Browser closed.");
