@@ -2,8 +2,8 @@ name: A2Z Order Auto Submitter
 
 on:
   schedule:
-    - cron: '*/5 * * * *' # සෑම මිනිත්තු 5කට සැරයක්ම Auto-Run වේ
-  workflow_dispatch: # Manual button එකෙන් ඕනෑම වෙලාවක Run කරගැනීමට
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
