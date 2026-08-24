@@ -164,7 +164,6 @@ async function pickProduct(page, productId) {
 
   console.log(`📦 Found ${pendingRows.length} pending orders. Launching Browser...`);
 
-  // Xvfb Virtual Display එකක් හරහා real browser එකක් ලෙස run කිරීමට headless: false භාවිතා කරයි
   const browser = await puppeteer.launch({
     headless: false,
     args: [
@@ -192,18 +191,6 @@ async function pickProduct(page, productId) {
 
   await debugStep(page, 'session_start_blank');
 
-  const recorder = new PuppeteerScreenRecorder(page, { fps: 15, aspectRatio: '16:9' });
-  let recording = false;
-  try {
-    await recorder.start('./videos/bot_live_action.mp4');
-    recording = true;
-    console.log("🎥 Screen Recording Started...");
-  } catch (e) {
-    console.log(`   ⚠️ Screen recorder failed to start, continuing without video: ${e.message}`);
-  }
-
-  await delay(1500);
-
   async function safeGoto(url, options) {
     try {
       return await page.goto(url, options);
@@ -223,6 +210,8 @@ async function pickProduct(page, productId) {
     }
   }
 
+  const recorder = new PuppeteerScreenRecorder(page, { fps: 15, aspectRatio: '16:9' });
+  let recording = false;
   let loginSucceeded = false;
 
   try {
@@ -232,6 +221,16 @@ async function pickProduct(page, productId) {
       timeout: 60000,
     });
     console.log(`   Login page HTTP status: ${loginResponse ? loginResponse.status() : 'unknown'}`);
+
+    // Page එක load වුණාට පසුව Recording එක Start කිරීම
+    try {
+      await recorder.start('./videos/bot_live_action.mp4');
+      recording = true;
+      console.log("🎥 Screen Recording Started...");
+    } catch (e) {
+      console.log(`   ⚠️ Screen recorder failed to start: ${e.message}`);
+    }
+
     await debugStep(page, 'after_goto_login');
 
     const htmlSnippet = (await page.content()).slice(0, 800);
