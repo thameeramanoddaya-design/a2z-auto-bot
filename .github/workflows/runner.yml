@@ -1,43 +1,23 @@
-name: Run A2Z Bot
+name: A2Z Automation Bot Run (Local Mac)
 
 on:
   workflow_dispatch:
 
 jobs:
   run-bot:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Install Dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
-      - name: Install Xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      - name: Run Bot with Virtual Display
+      - name: Run Puppeteer Bot Live
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
           A2Z_EMAIL: ${{ secrets.A2Z_EMAIL }}
           A2Z_PASSWORD: ${{ secrets.A2Z_PASSWORD }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-        run: |
-          xvfb-run --auto-servernum --server-args="-screen 0 1366x768x24" node index.js
-
-      # Screenshots සහ Video file Artifacts විදියට GitHub එකට Upload කිරීම
-      - name: Upload Debug Screenshots & Videos
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bot-debug-artifacts
-          path: |
-            debug/
-            videos/
+        run: node index.js
