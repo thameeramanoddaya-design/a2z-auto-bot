@@ -1,0 +1,11 @@
+{
+  "name": "a2z-auto-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "google-auth-library": "^9.0.0",
+    "google-spreadsheet": "^4.1.1",
+    "puppeteer": "^22.0.0",
+    "puppeteer-screen-recorder": "^2.1.2"
+  }
+}
