@@ -9,8 +9,6 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 if (!fs.existsSync('./videos')) fs.mkdirSync('./videos');
 if (!fs.existsSync('./debug')) fs.mkdirSync('./debug');
 
-// Helper: save a screenshot + log the current URL, so we can SEE exactly
-// where the bot is / what state the page is in at every important step.
 let stepCounter = 0;
 async function debugStep(page, label) {
   stepCounter++;
@@ -24,12 +22,6 @@ async function debugStep(page, label) {
   console.log(`🖼️  [${label}] URL: ${page.url()}`);
 }
 
-// ---- Generic helper for the site's select2-style searchable dropdowns ----
-// Used for City, District, Order Source: click the widget showing the
-// placeholder text, type into the search box that appears, then click the
-// first/highlighted result. This does NOT rely on a native <select> element
-// because these widgets are select2 (or similar) - setting .value directly
-// on the hidden underlying <select> does not register with the framework.
 async function pickFromSearchableDropdown(page, placeholderText, searchValue) {
   if (!searchValue) return false;
 
@@ -63,8 +55,6 @@ async function pickFromSearchableDropdown(page, placeholderText, searchValue) {
 
   await searchInput.type(String(searchValue), { delay: 50 });
 
-  // Wait for the results list to actually populate instead of guessing a
-  // fixed delay - the site's search can be slow depending on network load.
   try {
     await page.waitForSelector('.select2-results__option', { timeout: 8000 });
   } catch (e) {
@@ -83,7 +73,6 @@ async function pickFromSearchableDropdown(page, placeholderText, searchValue) {
   });
 
   if (!picked) {
-    // Fallback: press Enter in case the results render differently than expected
     await page.keyboard.press('Enter');
   }
 
@@ -91,7 +80,6 @@ async function pickFromSearchableDropdown(page, placeholderText, searchValue) {
   return true;
 }
 
-// ---- Product picker: the input is directly typeable (no separate trigger) ----
 async function pickProduct(page, productId) {
   if (!productId) return false;
 
@@ -104,8 +92,6 @@ async function pickProduct(page, productId) {
   await prodInput.click();
   await prodInput.type(String(productId), { delay: 50 });
 
-  // Wait for the AJAX product search to actually return a result instead of
-  // guessing a fixed delay.
   try {
     await page.waitForSelector('.select2-results__option', { timeout: 8000 });
   } catch (e) {
@@ -127,8 +113,6 @@ async function pickProduct(page, productId) {
     await page.keyboard.press('Enter');
   }
 
-  // Wait for the price fields to populate after picking the product, so we
-  // don't try to overwrite Sale Amount before the site has filled it in.
   try {
     await page.waitForFunction(() => {
       const el = document.querySelector('input[placeholder*="Total Price"]');
@@ -180,18 +164,13 @@ async function pickProduct(page, productId) {
 
   console.log(`📦 Found ${pendingRows.length} pending orders. Launching Browser...`);
 
-  // FIX: puppeteer-screen-recorder is incompatible with Puppeteer's NEW
-  // headless mode (the CDP context gets torn down mid-navigation, causing
-  // "Protocol error (DOM.describeNode): Cannot find context with specified id").
-  // As of Puppeteer v22, `headless: true` launches the NEW headless mode, not
-  // the legacy one - so we have to ask for legacy mode explicitly via 'shell'.
+  // Xvfb Virtual Display එකක් හරහා real browser එකක් ලෙස run කිරීමට headless: false භාවිතා කරයි
   const browser = await puppeteer.launch({
-    headless: 'shell',
+    headless: false,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu',
       '--window-size=1366,768',
     ]
   });
@@ -211,13 +190,8 @@ async function pickProduct(page, productId) {
     }
   });
 
-  // Guarantee at least one debug screenshot exists even if everything else
-  // fails immediately, so the "Upload Debug Screenshots" step always has
-  // something to upload instead of erroring with "No files found".
   await debugStep(page, 'session_start_blank');
 
-  // Start Video Recording - never let a recorder failure kill the whole run.
-  // If it can't start (or crashes later), we still want orders to be placed.
   const recorder = new PuppeteerScreenRecorder(page, { fps: 15, aspectRatio: '16:9' });
   let recording = false;
   try {
@@ -327,15 +301,9 @@ async function pickProduct(page, productId) {
       try {
         await safeGoto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Wait for the actual form to render instead of guessing a fixed
-        // delay - the page can take longer to load under some conditions.
         await page.waitForSelector('input[placeholder*="Customer Name"]', { timeout: 30000 });
         await debugStep(page, `order_${name}_customer_page`);
 
-        // Customer Name and Address are filled FIRST, before anything else
-        // on the form. (City/District are select2 widgets, not native
-        // selects, so they don't count as text inputs and don't shift this
-        // indexing.)
         const textInputs = await page.$$('input[type="text"]');
         if (textInputs.length >= 1) await textInputs[0].type(name, { delay: 50 });
         if (textInputs.length >= 2) await textInputs[1].type(address, { delay: 50 });
@@ -352,8 +320,6 @@ async function pickProduct(page, productId) {
           if (!ok) console.log(`   ⚠️ Could not set District to "${district}" for ${name}`);
         }
 
-        // Re-query text inputs: Contact Number One/Two, Email are unaffected
-        // by the dropdowns above, but re-fetching avoids stale handles.
         const textInputs2 = await page.$$('input[type="text"]');
         if (textInputs2.length >= 3) await textInputs2[2].type(phone, { delay: 50 });
         if (textInputs2.length >= 4 && phone2) await textInputs2[3].type(phone2, { delay: 50 });
@@ -361,8 +327,6 @@ async function pickProduct(page, productId) {
         if (orderSource) {
           const ok = await pickFromSearchableDropdown(page, 'Select Order Source...', orderSource);
           if (!ok) {
-            // Some deployments render Order Source as a plain <select> instead
-            // of a searchable widget - fall back to that.
             await page.evaluate((val) => {
               const selects = Array.from(document.querySelectorAll('select'));
               for (const sel of selects) {
@@ -387,9 +351,6 @@ async function pickProduct(page, productId) {
 
         await delay(600);
 
-        // The real placeholder is "Total Price...", not "Sale Amount...".
-        // Retail Price auto-fills the same value once a product is picked,
-        // so we only need to touch Sale Amount if we want to override it.
         if (price) {
           const saleAmountInput = await page.$('input[placeholder*="Total Price"]');
           if (saleAmountInput) {
