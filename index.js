@@ -1,15 +1,13 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 (async () => {
-  console.log("🚀 Starting Login Test...");
+  console.log("🚀 Launching Browser for Manual Setup...");
 
   const browser = await puppeteer.launch({
     headless: false,
     defaultViewport: null,
-    userDataDir: path.join(__dirname, 'my_chrome_data'),
+    userDataDir: path.join(__dirname, 'my_chrome_data'), // Data සහ Session Save වන Folder එක
     args: [
       '--start-maximized',
       '--no-sandbox',
@@ -23,52 +21,17 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
   try {
-    console.log("🔑 Navigating to Login Page...");
+    console.log("🔑 Navigating to Site...");
     await page.goto('https://a2ztraders.lk/index.php/Login', { 
       waitUntil: 'networkidle2', 
       timeout: 60000 
     });
 
-    console.log("⏳ Waiting for input fields...");
-    await page.waitForSelector('input[type="text"], input[name="email"], input[type="email"]', { visible: true, timeout: 30000 });
-
-    const emailInput = await page.$('input[type="text"], input[name="email"], input[type="email"]');
-    const passwordInput = await page.$('input[type="password"], input[name="password"]');
-
-    if (emailInput && passwordInput) {
-      console.log("✍️ Typing Email: thameeramanoddaya@gmail.com ...");
-      await emailInput.click({ clickCount: 3 });
-      await emailInput.type('thameeramanoddaya@gmail.com', { delay: 100 });
-
-      await delay(500);
-
-      console.log("✍️ Typing Password: ***** ...");
-      await passwordInput.click({ clickCount: 3 });
-      await passwordInput.type('123456', { delay: 100 });
-
-      await delay(1000);
-
-      console.log("🔘 Clicking Login Button...");
-      await Promise.all([
-        page.evaluate(() => {
-          const submitBtn = document.querySelector('button[type="submit"], input[type="submit"], .btn-primary, .btn');
-          if (submitBtn) {
-            submitBtn.click();
-          } else {
-            const form = document.querySelector('form');
-            if (form) form.submit();
-          }
-        }),
-        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(e => console.log("Navigation timeout, continuing..."))
-      ]);
-
-      await delay(3000);
-      console.log("✅ Login attempt finished!");
-    } else {
-      console.log("❌ Email or Password input fields not found.");
-    }
+    console.log("✅ Ready! දැන් Browser එකේ ඔයා කරන්න ඕන දේවල් Manual කරන්න. (Browser එක Auto Close වෙන්නේ නැත)");
 
   } catch (err) {
-    console.error("❌ Test Error:", err.message);
+    console.error("❌ Error loading page:", err.message);
   }
+  
+  // browser.close() නොමැති බැවින් Browser එක වැහෙන්නේ නැත.
 })();
