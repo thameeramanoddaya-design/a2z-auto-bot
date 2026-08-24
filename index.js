@@ -193,35 +193,12 @@ async function pickProduct(page, productId) {
       '--disable-dev-shm-usage',
       '--disable-gpu',
       '--window-size=1366,768',
-      // Hides the "Chrome is being controlled by automated test software"
-      // banner and the associated automation fingerprint some anti-bot
-      // scripts check for.
-      '--disable-blink-features=AutomationControlled',
     ]
   });
 
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
   await page.setViewport({ width: 1366, height: 768 });
-
-  // FIX: the site runs an anti-devtool/anti-bot script that checks for
-  // automation fingerprints (mainly `navigator.webdriver === true`, which
-  // Puppeteer sets by default). When it detects this, it logs "You don't
-  // have permission to use DEVTOOL!", spams console.clear(), and tries to
-  // close/blank the tab - which destroys the page's JS execution context
-  // and causes our "Cannot find context with specified id" crash. We patch
-  // these fingerprints away before ANY page script runs, on every new
-  // document (including the redirect after login).
-  await page.evaluateOnNewDocument(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    window.chrome = window.chrome || { runtime: {} };
-    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-    // Defensively no-op window.close() in case some other detection path
-    // still tries to close/blank the tab - we'd rather keep the page alive
-    // and let our own error handling deal with a failed step.
-    window.close = () => {};
-  });
 
   page.on('console', msg => console.log('   [browser console]', msg.text()));
   page.on('pageerror', err => console.log('   [browser page error]', err.message));
