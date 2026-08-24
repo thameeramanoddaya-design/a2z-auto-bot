@@ -1,16 +1,13 @@
-name: A2Z Automation Bot Run
+name: Run A2Z Bot
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 */6 * * *'
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -18,30 +15,19 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
       - name: Install Dependencies
-        run: npm install --legacy-peer-deps
+        run: npm install
 
-      - name: Run Puppeteer Bot
+      - name: Install Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Run Bot with Virtual Display
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
           A2Z_EMAIL: ${{ secrets.A2Z_EMAIL }}
           A2Z_PASSWORD: ${{ secrets.A2Z_PASSWORD }}
-        run: node index.js
-
-      - name: Upload Recorded Video
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bot-video-recording
-          path: videos/
-
-      - name: Upload Debug Screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bot-debug-screenshots
-          path: debug/
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1366x768x24" node index.js
