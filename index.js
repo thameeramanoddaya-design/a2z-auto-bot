@@ -62,7 +62,14 @@ async function pickFromSearchableDropdown(page, placeholderText, searchValue) {
   }
 
   await searchInput.type(String(searchValue), { delay: 50 });
-  await delay(700);
+
+  // Wait for the results list to actually populate instead of guessing a
+  // fixed delay - the site's search can be slow depending on network load.
+  try {
+    await page.waitForSelector('.select2-results__option', { timeout: 8000 });
+  } catch (e) {
+    console.log(`   ⚠️ No dropdown results appeared for "${searchValue}" within 8s`);
+  }
 
   const picked = await page.evaluate(() => {
     const opt =
@@ -80,7 +87,7 @@ async function pickFromSearchableDropdown(page, placeholderText, searchValue) {
     await page.keyboard.press('Enter');
   }
 
-  await delay(300);
+  await delay(400);
   return true;
 }
 
@@ -96,7 +103,14 @@ async function pickProduct(page, productId) {
 
   await prodInput.click();
   await prodInput.type(String(productId), { delay: 50 });
-  await delay(900); // allow the AJAX product search to return
+
+  // Wait for the AJAX product search to actually return a result instead of
+  // guessing a fixed delay.
+  try {
+    await page.waitForSelector('.select2-results__option', { timeout: 8000 });
+  } catch (e) {
+    console.log(`   ⚠️ No product result appeared for "${productId}" within 8s`);
+  }
 
   const picked = await page.evaluate(() => {
     const opt =
@@ -113,7 +127,17 @@ async function pickProduct(page, productId) {
     await page.keyboard.press('Enter');
   }
 
-  await delay(500);
+  // Wait for the price fields to populate after picking the product, so we
+  // don't try to overwrite Sale Amount before the site has filled it in.
+  try {
+    await page.waitForFunction(() => {
+      const el = document.querySelector('input[placeholder*="Total Price"]');
+      return el && el.value && el.value.trim() !== '';
+    }, { timeout: 6000 });
+  } catch (e) {
+    console.log(`   ⚠️ Retail/sale price did not auto-fill within 6s for "${productId}"`);
+  }
+
   return true;
 }
 
@@ -302,12 +326,16 @@ async function pickProduct(page, productId) {
 
       try {
         await safeGoto('https://a2ztraders.lk/Customer', { waitUntil: 'networkidle2', timeout: 60000 });
-        await delay(2000);
+
+        // Wait for the actual form to render instead of guessing a fixed
+        // delay - the page can take longer to load under some conditions.
+        await page.waitForSelector('input[placeholder*="Customer Name"]', { timeout: 30000 });
         await debugStep(page, `order_${name}_customer_page`);
 
-        // Customer Name and Address are the first two plain text inputs.
-        // (City/District are select2 widgets, not native selects, so they
-        // don't count as text inputs and don't shift this indexing.)
+        // Customer Name and Address are filled FIRST, before anything else
+        // on the form. (City/District are select2 widgets, not native
+        // selects, so they don't count as text inputs and don't shift this
+        // indexing.)
         const textInputs = await page.$$('input[type="text"]');
         if (textInputs.length >= 1) await textInputs[0].type(name, { delay: 50 });
         if (textInputs.length >= 2) await textInputs[1].type(address, { delay: 50 });
