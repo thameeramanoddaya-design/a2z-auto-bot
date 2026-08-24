@@ -31,3 +31,13 @@ jobs:
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1366x768x24" node index.js
+
+      # Screenshots සහ Video file Artifacts විදියට GitHub එකට Upload කිරීම
+      - name: Upload Debug Screenshots & Videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-debug-artifacts
+          path: |
+            debug/
+            videos/
