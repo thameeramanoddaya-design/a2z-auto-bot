@@ -4,8 +4,10 @@ const fs = require('fs');
 
 puppeteer.use(StealthPlugin());
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 (async () => {
-  console.log("🚀 Cookie Auto-Refresh Mode එකෙන් Launch කරයි...");
+  console.log("🚀 Cookie Session හරහා Automation එක ආරම්භ වේ...");
 
   const browser = await puppeteer.launch({
     headless: false,
@@ -21,11 +23,9 @@ puppeteer.use(StealthPlugin());
   const page = (await browser.pages())[0];
 
   try {
-    // 1. Direct Login Page එකට යාම (Dashboard එක වෙනුවට)
-    const LOGIN_URL = 'https://a2ztraders.lk/login'; // හෝ https://a2ztraders.lk
-    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Domain එක Load කර Cookie එක set කිරීම
+    await page.goto('https://a2ztraders.lk', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // 2. Cookie Inject කිරීම
     if (fs.existsSync('cookies.json')) {
       const cookiesString = fs.readFileSync('cookies.json', 'utf8');
       const cookies = JSON.parse(cookiesString);
@@ -35,32 +35,28 @@ puppeteer.use(StealthPlugin());
         delete cookie.session;
         delete cookie.storeId;
         delete cookie.id;
-        if (cookie.sameSite === "unspecified" || !cookie.sameSite) cookie.sameSite = "Lax";
+        if (cookie.sameSite === "unspecified") cookie.sameSite = "Lax";
         
         await page.setCookie(cookie);
       }
-      console.log("🍪 Cookie Inject විය!");
+      console.log("🍪 Session Cookie එක සාර්ථකව Inject විය!");
+    } else {
+      console.log("⚠️ cookies.json File එක හමු වුණේ නැත!");
     }
 
-    // 3. Cookie එක Set වූ පසු Dashboard එක Reload කිරීම
-    console.log("🎯 Redirecting to Dashboard...");
+    // Direct Login Bypass වී Dashboard එකට යාම
+    console.log("🎯 Direct Dashboard එකට යනවා...");
     await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // 4. යම් හෙයකින් ආයේ Login පිටුවට ආවොත්, අලුත් Cookie එක Save කරගැනීම
-    if (page.url().includes('login')) {
-      console.log("⚠️ Old Cookie expired! Please login manually once.");
-    } else {
-      console.log("✅ Successfully Logged In! Current URL:", page.url());
-      
-      // Active Session Cookie එක ආයේ Auto-Update කරගැනීම (ඊළඟ පාරට පාවිච්චි කිරීමට)
-      const updatedCookies = await page.cookies();
-      fs.writeFileSync('cookies.json', JSON.stringify(updatedCookies, null, 2));
-      console.log("🔄 Updated fresh cookies saved to 'cookies.json'!");
-    }
+    console.log("✅ සාර්ථකව Dashboard එකට Log විය! Title:", await page.title());
+    console.log("📍 Current URL:", page.url());
 
-    await new Promise(() => {});
+    await delay(15000);
 
   } catch (err) {
     console.error("❌ Process Error:", err.message);
+  } finally {
+    console.log("🏁 Task Complete! Browser එක වසනවා...");
+    await browser.close();
   }
 })();
