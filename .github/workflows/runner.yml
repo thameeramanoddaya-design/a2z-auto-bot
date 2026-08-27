@@ -34,7 +34,7 @@ jobs:
           CI: true
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-          A2Z_EMAIL: ${{ secrets.A2Z_EMAIL }}
-          A2Z_PASSWORD: ${{ secrets.A2Z_PASSWORD }}
+          A2Z_EMAIL: ${{ thameeramanoddaya@gmail.com }}
+          A2Z_PASSWORD: ${{ 123456 }}
         run: |
           node index.js
