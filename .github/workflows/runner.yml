@@ -2,8 +2,6 @@ name: Run Puppeteer Bot Live
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 */6 * * *'
 
 jobs:
   run-bot:
@@ -26,11 +24,8 @@ jobs:
 
       - name: Install Node Packages
         run: |
-          npm install
           npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
       - name: Run Puppeteer Script
-        env:
-          CI: true
         run: |
           node index.js
