@@ -1,4 +1,34 @@
-- name: Install Dependencies
+name: Run Puppeteer Bot Live
+
+on:
+  workflow_dispatch: # Manual Run කිරීම සඳහා
+  schedule:
+    - cron: '0 */6 * * *' # පැය 6කට වතාවක් Automatic Run වීමට (අවශ්‍ය නම් වෙනස් කළ හැක)
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
         run: |
-          npm install
+          npm ci || npm install
           npm install puppeteer-extra puppeteer-extra-plugin-stealth
+
+      - name: Run Puppeteer Script
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          A2Z_EMAIL: ${{ secrets.A2Z_EMAIL }}
+          A2Z_PASSWORD: ${{ secrets.A2Z_PASSWORD }}
+        run: |
+          node index.js
