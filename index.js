@@ -12,7 +12,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   const password = "123456";
 
   const browser = await puppeteer.launch({
-    headless: false, // PC එකේ Chrome Window එක Open වී පෙනෙන ලෙස
+    headless: false, // PC එකේ Window එක පෙනෙන ලෙස
     defaultViewport: null,
     args: ['--start-maximized']
   });
@@ -38,10 +38,14 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })
     ]);
 
-    console.log("✅ Successfully Logged In!");
-    console.log("Current Page URL:", page.url());
+    console.log("✅ Logged In! Now Navigating to Dashboard...");
+    
+    // Direct Dashboard Link එකට යාම
+    await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // Window එක බලාගැනීමට තත්පර 10ක් open තබයි
+    console.log("🎯 Currently on Dashboard:", page.url());
+
+    // Dashboard එක බලාගැනීමට තත්පර 10ක් Open තබයි
     await delay(10000);
 
   } catch (err) {
