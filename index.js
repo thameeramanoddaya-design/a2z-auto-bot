@@ -6,19 +6,15 @@ puppeteer.use(StealthPlugin());
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
-  console.log("🚀 Starting Stealth Browser...");
+  console.log("🚀 Starting Stealth Browser on GitHub Actions...");
 
-  // Hardcoded Credentials
   const email = "thameeramanoddaya@gmail.com";
   const password = "123456";
 
-  const isServer = process.env.CI || process.env.GITHUB_ACTIONS;
-
   const browser = await puppeteer.launch({
-    headless: isServer ? true : false, // Mac එකේදී Browser එක ඇස් දෙකට පෙනෙන ලෙස (false)
+    headless: true,
     defaultViewport: null,
     args: [
-      '--start-maximized',
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
@@ -34,7 +30,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     console.log("🔑 Navigating to Login Page...");
     await page.goto('https://a2ztraders.lk/index.php/Login', { waitUntil: 'networkidle2', timeout: 60000 });
 
-    console.log("✍️ Auto filling credentials...");
+    console.log("✍️ Entering Credentials...");
     await page.waitForSelector('input[name="email"], input[type="text"]', { visible: true });
 
     await page.type('input[name="email"], input[type="text"]', email, { delay: 100 });
@@ -42,7 +38,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     await delay(1000);
 
-    console.log("🔘 Submitting Form...");
+    console.log("🔘 Logging In...");
     await Promise.all([
       page.click('button[type="submit"], input[type="submit"]'),
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })
@@ -51,13 +47,10 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     console.log("✅ Successfully Logged In!");
     console.log("Current Page URL:", page.url());
 
-    // Login වූ පසු තත්පර 10ක් Browser එක Open වී තැබීමට
-    await delay(10000);
-
   } catch (err) {
     console.error("❌ Process Error:", err.message);
   } finally {
-    console.log("🏁 Closing Browser...");
+    console.log("🏁 Task Finished!");
     await browser.close();
   }
 })();
