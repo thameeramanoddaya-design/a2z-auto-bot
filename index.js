@@ -6,25 +6,19 @@ puppeteer.use(StealthPlugin());
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
-  console.log("🚀 Starting Stealth Browser on GitHub Actions...");
+  console.log("🚀 Starting Chrome Browser on your PC...");
 
   const email = "thameeramanoddaya@gmail.com";
   const password = "123456";
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false, // PC එකේ Chrome Window එක Open වී පෙනෙන ලෙස
     defaultViewport: null,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu'
-    ]
+    args: ['--start-maximized']
   });
 
   const pages = await browser.pages();
   const page = pages.length > 0 ? pages[0] : await browser.newPage();
-  await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
   try {
     console.log("🔑 Navigating to Login Page...");
@@ -46,6 +40,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     console.log("✅ Successfully Logged In!");
     console.log("Current Page URL:", page.url());
+
+    // Window එක බලාගැනීමට තත්පර 10ක් open තබයි
+    await delay(10000);
 
   } catch (err) {
     console.error("❌ Process Error:", err.message);
