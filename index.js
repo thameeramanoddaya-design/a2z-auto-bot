@@ -11,7 +11,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   try {
     // Port 9222 හරහා Real Chrome එකට Connect වීම (Automation Detection 0% යි)
     const browser = await puppeteer.connect({
-      browserURL: 'http://127.0.0.1:9223',
+      browserURL: 'http://127.0.0.1:9222',
       defaultViewport: null
     });
 
