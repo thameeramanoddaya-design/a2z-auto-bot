@@ -18,8 +18,7 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
 (async () => {
   console.log("🚀 Anti-Bot Bypass Auto-Login ආරම්භ වේ...");
 
-  // Local PC එකේදී Browser එක පෙනීමට headless: false දමා ඇත. 
-  // (GitHub එකේ Run කරන විට මෙතැන true කරන්න)
+  // headless: false නිසා ඔබේ PC Screen එකේ Real Browser එක Open වේ
   const browser = await puppeteer.launch({
     headless: false, 
     defaultViewport: null,
@@ -48,7 +47,7 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
     await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2', timeout: 60000 });
     await delay(3000);
 
-    // 3. Login වී නැත්නම් (හෝ Cookie expire වී Login page එකට redirect වුණොත්)
+    // 3. Cookie Expire වී ඇත්නම් Fresh Login සිදු කිරීම
     if (page.url().includes('Dash') || page.url().includes('login')) {
       console.log("⚠️ Cookie Expire වී ඇත (හෝ මුල්ම Login එකයි). Fresh Login එකක් සිදු කරයි...");
       
@@ -57,7 +56,6 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
         await delay(2000);
       }
 
-      // Input Selectors
       const emailSelector = 'input[type="email"], input[name="email"], input[name="username"], input[type="text"]';
       const passSelector = 'input[type="password"], input[name="password"]';
 
@@ -72,7 +70,7 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
       console.log("🔘 Keyboard Enter මගින් Submit කරයි...");
       await page.focus(passSelector);
       
-      // Real Keyboard Enter එකක් මගින් Submit කිරීම (White-screen වීම වළක්වයි)
+      // Real Keyboard Enter එකක් මගින් Submit කිරීම (White Screen වීම වළක්වයි)
       await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {}),
         page.keyboard.press('Enter')
@@ -80,13 +78,12 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
 
       await delay(4000);
 
-      // යම් හෙයකින් auto-redirect වුණේ නැත්නම් direct Dashboard එකට යාම
       if (!page.url().includes('Drop_dash')) {
         await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2' });
         await delay(2000);
       }
 
-      // 4. අලුත් Session Cookie එක Save කරගැනීම
+      // 4. අලුත් Cookie එක Auto-Save කරගැනීම
       const newCookies = await page.cookies();
       fs.writeFileSync(COOKIE_FILE, JSON.stringify(newCookies, null, 2));
       console.log("✅ අලුත් Cookie එක සාර්ථකව cookies.json එකට Save විය!");
@@ -97,7 +94,7 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
     console.log("📍 Current URL:", page.url());
     console.log("🎉 Page Title:", await page.title());
 
-    // Confirm කරගැනීමට Screenshot එකක් සුරැකීම
+    // Status Screenshot එකක් සුරැකීම
     await page.screenshot({ path: 'login_status.png' });
     console.log("📸 Screenshot saved as login_status.png");
 
@@ -105,7 +102,8 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
     console.error("❌ Process Error:", err.message);
   } finally {
     console.log("🏁 Task Complete!");
-    // PC එකේදී Open වෙලා තියෙන එක බලන්න ඕන නම් පහත line එක comment කරන්න (// await browser.close();)
+    // Browser එක එකපාරට නොවසා පෙනී තිබීමට තත්පර 5ක් තබයි
+    await delay(5000);
     await browser.close();
   }
 })();
