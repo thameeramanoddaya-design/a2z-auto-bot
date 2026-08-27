@@ -1,25 +1,38 @@
-name: Run Puppeteer Bot on My PC
+name: A2Z Traders Auto Login
 
 on:
   workflow_dispatch:
 
 jobs:
   run-bot:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/node-options@v3
         with:
-          node-version: '20'
+          node-version: '18'
 
       - name: Install Dependencies
         run: |
+          npm init -y
           npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
-      - name: Run Puppeteer Script (Visual Mode)
+      - name: Run Puppeteer with Virtual Display (Xvfb)
+        env:
+          SITE_EMAIL: ${{ secrets.SITE_EMAIL }}
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
         run: |
-          node index.js
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          xvfb-run --auto-servernum node index.js
+
+      - name: Save Screenshot Artifact
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: login-screenshot
+          path: dashboard_result.png
