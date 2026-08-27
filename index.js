@@ -18,14 +18,16 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
 (async () => {
   console.log("🚀 Anti-Bot Bypass Auto-Login ආරම්භ වේ...");
 
+  // Local PC එකේදී Browser එක පෙනීමට headless: false දමා ඇත. 
+  // (GitHub එකේ Run කරන විට මෙතැන true කරන්න)
   const browser = await puppeteer.launch({
-    headless: true, // GitHub Actions සහ PC දෙකටම සුදුසුයි
-    defaultViewport: { width: 1920, height: 1080 },
+    headless: false, 
+    defaultViewport: null,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
-      '--window-size=1920,1080'
+      '--start-maximized'
     ]
   });
 
@@ -55,7 +57,7 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
         await delay(2000);
       }
 
-      // Input Selectors (Generic A2Z Traders Selectors)
+      // Input Selectors
       const emailSelector = 'input[type="email"], input[name="email"], input[name="username"], input[type="text"]';
       const passSelector = 'input[type="password"], input[name="password"]';
 
@@ -95,14 +97,15 @@ const USER_PASS = process.env.SITE_PASSWORD || '123456';
     console.log("📍 Current URL:", page.url());
     console.log("🎉 Page Title:", await page.title());
 
-    // Screenshot එකක් අරන් Confirm කරගැනීම
+    // Confirm කරගැනීමට Screenshot එකක් සුරැකීම
     await page.screenshot({ path: 'login_status.png' });
     console.log("📸 Screenshot saved as login_status.png");
 
   } catch (err) {
     console.error("❌ Process Error:", err.message);
   } finally {
-    console.log("🏁 Task Complete! Browser එක වසයි.");
+    console.log("🏁 Task Complete!");
+    // PC එකේදී Open වෙලා තියෙන එක බලන්න ඕන නම් පහත line එක comment කරන්න (// await browser.close();)
     await browser.close();
   }
 })();
