@@ -1,9 +1,9 @@
 name: Run Puppeteer Bot Live
 
 on:
-  workflow_dispatch: # Manual Run කිරීම සඳහා
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # පැය 6කට වතාවක් Automatic Run වීමට (අවශ්‍ය නම් වෙනස් කළ හැක)
+    - cron: '0 */6 * * *'
 
 jobs:
   run-bot:
@@ -17,12 +17,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install Dependencies
         run: |
-          npm ci || npm install
-          npm install puppeteer-extra puppeteer-extra-plugin-stealth
+          npm install
+          npm install puppeteer-extra puppeteer-extra-plugin-stealth google-spreadsheet google-auth-library
 
       - name: Run Puppeteer Script
         env:
