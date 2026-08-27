@@ -1,0 +1,12 @@
+[
+  {
+    "domain": "a2ztraders.lk",
+    "expirationDate": 1787864738.222873,
+    "httpOnly": true,
+    "name": "ci_session",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": false,
+    "value": "3i6o832t194qdeqk42u8s854mve7f6co"
+  }
+]
