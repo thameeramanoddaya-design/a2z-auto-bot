@@ -7,61 +7,56 @@ puppeteer.use(StealthPlugin());
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
-  console.log("🚀 Advanced Anti-Bot Bypass Mode එකෙන් Chrome Open කරයි...");
+  console.log("🚀 Cookie Session හරහා Automation එක ආරම්භ වේ...");
 
   const browser = await puppeteer.launch({
     headless: false,
     defaultViewport: null,
-    ignoreHTTPSErrors: true,
     args: [
       '--start-maximized',
-      '--disable-blink-features=AutomationControlled', // Puppeteer බව සඟවයි
-      '--disable-web-security',
-      '--disable-features=IsolateOrigins,site-per-process',
-      '--no-sandbox'
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled'
     ]
   });
 
   const page = (await browser.pages())[0];
 
-  // JavaScript වල Anti-Bot & Back Redirect Scripts Disabled කිරීම
-  await page.evaluateOnNewDocument(() => {
-    // 1. Overwrite navigator.webdriver flag
-    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-
-    // 2. Disable History/Back Navigation Blockers
-    window.onbeforeunload = null;
-    window.onunload = null;
-    
-    // 3. Disable Chrome Automation indicators
-    window.chrome = { runtime: {} };
-  });
-
-  // Normal Mac User Agent එකක් ලෙස පෙන්වීම
-  await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-
   try {
-    console.log("🔑 Page එකට යනවා...");
-    await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // Domain එක Load කර Cookie එක set කිරීම
+    await page.goto('https://a2ztraders.lk', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    console.log("\n=======================================================");
-    console.log("👉 දැන් PC එකේ Open වුණු Browser එකෙන් Normal විදිහට Log වෙන්න!");
-    console.log("⏳ Session එක Auto-Save වීමට තත්පර 90ක කාලයක් ඇත...");
-    console.log("=======================================================\n");
+    if (fs.existsSync('cookies.json')) {
+      const cookiesString = fs.readFileSync('cookies.json', 'utf8');
+      const cookies = JSON.parse(cookiesString);
+      
+      for (let cookie of cookies) {
+        delete cookie.hostOnly;
+        delete cookie.session;
+        delete cookie.storeId;
+        delete cookie.id;
+        if (cookie.sameSite === "unspecified") cookie.sameSite = "Lax";
+        
+        await page.setCookie(cookie);
+      }
+      console.log("🍪 Session Cookie එක සාර්ථකව Inject විය!");
+    } else {
+      console.log("⚠️ cookies.json File එක හමු වුණේ නැත!");
+    }
 
-    // ඔයාට Log වෙන්න තත්පර 90ක් දෙනවා (කාලය මදි නම් මේ 90000 වැඩි කරන්න පුළුවන්)
-    await delay(90000);
+    // Direct Login Bypass වී Dashboard එකට යාම
+    console.log("🎯 Direct Dashboard එකට යනවා...");
+    await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // Dashboard එකට ගිය පසු Cookies Save කරගැනීම
-    const cookies = await page.cookies();
-    fs.writeFileSync('cookies.json', JSON.stringify(cookies, null, 2));
+    console.log("✅ සාර්ථකව Dashboard එකට Log විය! Title:", await page.title());
+    console.log("📍 Current URL:", page.url());
 
-    console.log("✅ Cookies සාර්ථකව 'cookies.json' එකට Save විය!");
+    await delay(15000);
 
   } catch (err) {
     console.error("❌ Process Error:", err.message);
   } finally {
-    console.log("🏁 Browser එක වසනවා...");
+    console.log("🏁 Task Complete! Browser එක වසනවා...");
     await browser.close();
   }
 })();
