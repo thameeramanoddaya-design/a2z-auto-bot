@@ -1,11 +1,11 @@
-name: Run Puppeteer Bot Live
+name: Run Puppeteer Bot on My PC
 
 on:
   workflow_dispatch:
 
 jobs:
   run-bot:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout Repository
@@ -16,16 +16,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Linux Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget gnupg ca-certificates procps libxss1
-          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2
-
-      - name: Install Node Packages
+      - name: Install Dependencies
         run: |
           npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
-      - name: Run Puppeteer Script
+      - name: Run Puppeteer Script (Visual Mode)
         run: |
           node index.js
