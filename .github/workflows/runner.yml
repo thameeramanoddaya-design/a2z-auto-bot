@@ -1,18 +1,20 @@
-name: A2Z Traders Auto Login
+name: A2Z Traders Automation
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *' # සෑම පැය 6කටම සැරයක් Auto-Run වේ (Session Keep-Alive)
 
 jobs:
-  run-bot:
+  run-script:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Setup Node.js
-        uses: actions/node-options@v3
+        uses: actions/setup-node@v3
         with:
           node-version: '18'
 
@@ -21,18 +23,24 @@ jobs:
           npm init -y
           npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
-      - name: Run Puppeteer with Virtual Display (Xvfb)
-        env:
-          SITE_EMAIL: ${{ secrets.SITE_EMAIL }}
-          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+      - name: Run Script with Virtual Display
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
           xvfb-run --auto-servernum node index.js
 
-      - name: Save Screenshot Artifact
+      # අලුත් Cookie එක Auto Commit කර Repo එකේ Save කිරීම
+      - name: Commit Updated Cookies
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "action@github.com"
+          git add cookies.json || true
+          git commit -m "Auto-update session cookies" || true
+          git push || true
+
+      - name: Upload Screenshot Artifact
         uses: actions/upload-artifact@v3
         if: always()
         with:
-          name: login-screenshot
-          path: dashboard_result.png
+          name: execution-screenshot
+          path: login_status.png
