@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Chrome & Linux Dependencies
+      - name: Install Linux Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y wget gnupg ca-certificates procps libxss1
@@ -27,14 +27,10 @@ jobs:
       - name: Install Node Packages
         run: |
           npm install
-          npm install puppeteer-extra puppeteer-extra-plugin-stealth google-spreadsheet google-auth-library
+          npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
       - name: Run Puppeteer Script
         env:
           CI: true
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-          A2Z_EMAIL: ${{ thameeramanoddaya@gmail.com }}
-          A2Z_PASSWORD: ${{ 123456 }}
         run: |
           node index.js
