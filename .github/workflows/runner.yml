@@ -1,23 +1,4 @@
-name: A2Z Automation Bot Run (Local Mac)
-
-on:
-  workflow_dispatch:
-
-jobs:
-  run-bot:
-    runs-on: self-hosted
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Install Dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Run Puppeteer Bot Live
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-          A2Z_EMAIL: ${{ secrets.A2Z_EMAIL }}
-          A2Z_PASSWORD: ${{ secrets.A2Z_PASSWORD }}
-        run: node index.js
+- name: Install Dependencies
+        run: |
+          npm install
+          npm install puppeteer-extra puppeteer-extra-plugin-stealth
