@@ -6,15 +6,15 @@ puppeteer.use(StealthPlugin());
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
-  console.log("🚀 Anti-Bot Bypass Mode එකෙන් Auto-Login ආරම්භ වේ...");
+  console.log("🚀 Anti-Bot Stealth Mode එකෙන් Auto-Login ආරම්භ වේ...");
 
   const browser = await puppeteer.launch({
-    headless: "new",
-    defaultViewport: null,
+    headless: true, // GitHub Runner එකට සහ PC එකට වඩාත්ම ස්ථායී වේ
+    defaultViewport: { width: 1920, height: 1080 },
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled', // Bot Detection Disable කිරීම
+      '--disable-blink-features=AutomationControlled',
       '--disable-web-security',
       '--disable-features=IsolateOrigins,site-per-process',
       '--window-size=1920,1080'
@@ -24,15 +24,12 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   const page = (await browser.pages())[0];
 
   try {
-    // 1. Real Browser Header Masks (Bot කෙනෙක් නෙවෙයි කියා පෙන්නීමට)
-    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': 'en-US,en;q=0.9'
-    });
-
-    // 2. Navigation override flags
+    // 1. User Agent එක සහ Webdriver Flag එක Mask කිරීම
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+    
     await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      delete navigator.__proto__.webdriver;
     });
 
     console.log("🔑 Login පිටුවට යනවා...");
@@ -43,35 +40,44 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const USER_EMAIL = process.env.SITE_EMAIL || "ඔයාගේ_EMAIL_එක";
     const USER_PASS = process.env.SITE_PASSWORD || "ඔයාගේ_PASSWORD_එක";
 
-    console.log("✍️ Human Typing Simulation (මිනිසෙක් ටයිප් කරන ලෙසට)...");
-    
+    console.log("✍️ Human Typing Simulation...");
+
+    // Input fields පෙනෙන තෙක් සිටීම
+    await page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 10000 });
+
     // Human Typing Delay (එක පාර Paste නොවී ටයිප් වෙන ලෙස)
-    await page.type('input[type="email"], input[name="email"]', USER_EMAIL, { delay: 120 });
+    await page.type('input[name="email"], input[type="email"]', USER_EMAIL, { delay: 100 });
     await delay(800);
-    await page.type('input[type="password"], input[name="password"]', USER_PASS, { delay: 150 });
+    await page.type('input[name="password"], input[type="password"]', USER_PASS, { delay: 120 });
     await delay(1000);
 
-    console.log("🔘 Submit Request යවයි...");
+    console.log("🔘 Keyboard Enter මගින් Submit කරයි...");
 
-    // Form Submit කිරීම (Button Click වෙනුවට Form Submit Trigger කිරීම වඩාත් සාර්ථකයි)
-    await page.evaluate(() => {
-      const form = document.querySelector('form');
-      if (form) form.submit();
-    });
+    // JS Form Submit වෙනුවට Password input එක උඩදී Real Keyboard Enter එකක් ඔබයි
+    await page.focus('input[name="password"], input[type="password"]');
+    
+    // Form navigation එක සිදු වන තෙක් රඳී සිටීම
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {}),
+      page.keyboard.press('Enter')
+    ]);
 
-    // Page එක Redirect වන තෙක් රඳී සිටීම
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
-    await delay(3000);
+    await delay(4000);
 
-    console.log("📍 Redirected URL:", page.url());
+    console.log("📍 Current URL:", page.url());
 
-    // Dashboard එකට Direct Jump කිරීම (යම් හෙයකින් Redirect නොවුනොත්)
+    // Dashboard එකට Direct Jump කිරීම (යම් හෙයකින් Login වී Dashboard එකට auto-redirect වුණේ නැත්නම්)
     if (!page.url().includes('dash')) {
-      console.log("🔄 Force navigating to Dashboard...");
+      console.log("🔄 Navigating to Dashboard...");
       await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'networkidle2' });
+      await delay(2000);
     }
 
     console.log("🎉 Dashboard Page Title:", await page.title());
+
+    // Confirm කරගැනීමට Screenshot එකක් සුරැකීම
+    await page.screenshot({ path: 'dashboard_result.png' });
+    console.log("📸 Screenshot saved as dashboard_result.png");
 
   } catch (err) {
     console.error("❌ Process Error:", err.message);
