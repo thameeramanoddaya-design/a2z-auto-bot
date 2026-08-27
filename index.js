@@ -22,7 +22,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   try {
     console.log("🔑 Navigating to Login Page...");
-    await page.goto('https://a2ztraders.lk/index.php/Login', { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'networkidle2', timeout: 60000 });
 
     console.log("✍️ Entering Credentials...");
     await page.waitForSelector('input[name="email"], input[type="text"]', { visible: true });
