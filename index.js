@@ -8,7 +8,7 @@ puppeteer.use(StealthPlugin());
   const page = await browser.newPage();
 
   try {
-    await page.goto('https://a2ztraders.lk/index.php/Login', { waitUntil: 'networkidle2' });
+    await page.goto('https://a2ztraders.lk/dash', { waitUntil: 'networkidle2' });
 
     // Login Form එකේ HTML කොටස අරගෙන Terminal එකට පෙන්නයි
     const formHTML = await page.evaluate(() => {
