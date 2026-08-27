@@ -6,19 +6,21 @@ puppeteer.use(StealthPlugin());
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
-  console.log("🚀 හරියටම Chrome Profile 43 එකෙන් Browser එක Open වේ...");
+  console.log("🚀 Chrome Profile 43 හරහා Browser එක Open වේ...");
 
   try {
-    // Direct Profile 43 Path එක ලබාදීම (Guest / Unsigned වෙන එක මෙයින් 100% නැවතේ)
     const browser = await puppeteer.launch({
       headless: false,
       executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-      userDataDir: '/Users/kaveeshavadanu/Library/Application Support/Google/Chrome/Profile 43',
       defaultViewport: null,
       args: [
         '--start-maximized',
         '--no-sandbox',
-        '--disable-setuid-sandbox'
+        '--disable-setuid-sandbox',
+        // Root Chrome Data Folder එක ලබාදීම:
+        '--user-data-dir=/Users/kaveeshavadanu/Library/Application Support/Google/Chrome',
+        // Exact Profile Folder එක ස සඳහන් කිරීම:
+        '--profile-directory=Profile 43'
       ]
     });
 
